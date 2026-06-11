@@ -1,15 +1,17 @@
 """
-The Robot orchestrator - the main loop that ties everything together.
+The Robot orchestrator — the main loop that ties everything together.
 
-Flow (same idea as the original voice_ai.py, now safe and modular):
-    wait for a face  ->  (optional wake word)  ->  listen  ->  transcribe
-    ->  answer (FAQ or AI)  ->  speak with mouth movement  ->  back to idle
+Flow:
+    wait for a face  →  (optional wake word)  →  listen  →  transcribe
+    →  answer (FAQ or AI)  →  speak with mouth movement  →  back to idle
 
-The face shows the matching emotion at each step and captions what was said.
+Camera preview runs continuously (via CameraFeed background thread) so the
+user always sees themselves on screen regardless of the robot's current state.
 All hardware is cleaned up on exit, even on crash or Ctrl+C.
 """
 
 import atexit
+import os
 import signal
 import subprocess
 import time
@@ -24,66 +26,67 @@ from src.core.states import RobotState
 from src.hardware.head_controller import HeadController
 from src.ui.face import Face
 from src.utils.logging_setup import get_logger
-from src.vision.camera import Camera
+from src.vision.camera import Camera, CameraFeed
 from src.vision.tracker import FaceTracker
 
 log = get_logger("robot")
 
-STOP_WORDS = ["stop", "exit", "توقف"]
+STOP_WORDS     = ["stop", "exit", "توقف"]
 GREETING_WORDS = ["hello", "hi", "hey", "مرحبا", "السلام", "salut", "bonjour", "hola"]
+
+# How long to show the ERROR face before returning to idle.
+ERROR_HOLD_SECS = 2.0
 
 
 class Robot:
     def __init__(self):
-        self.settings = settings
-        self.running = True
-        self._do_shutdown = False
+        self.settings    = settings
+        self.running     = True
+        self._do_shutdown  = False
         self._cleaned_up = False
 
-        # Working audio files (kept in the project folder).
-        self.voice_path = str(settings.project_root / "voice.wav")
+        self.voice_path  = str(settings.project_root / "voice.wav")
         self.answer_path = str(settings.project_root / "answer.wav")
 
         # Build all the parts.
-        self.face = Face(settings)
-        self.camera = Camera(settings)
-        self.recorder = Recorder(settings)
-        self.player = Player(settings)
+        self.face      = Face(settings)
+        self.camera    = Camera(settings)
+        self.feed      = CameraFeed(self.camera,
+                                    fps=int(settings.vision.get("feed_fps", 15)))
+        self.recorder  = Recorder(settings)
+        self.player    = Player(settings)
         self.assistant = Assistant(settings)
         self.knowledge = Knowledge(settings)
-        self.wakeword = WakeWord(settings)
-        self.tracker = FaceTracker()
-        self.head = HeadController(settings)
+        self.wakeword  = WakeWord(settings)
+        self.tracker   = FaceTracker()
+        self.head      = HeadController(settings)
 
-        self.messages = self.knowledge.build_messages()
-        self.state = RobotState.IDLE
+        self.messages    = self.knowledge.build_messages()
+        self.state       = RobotState.IDLE
+        self.track_face  = bool(settings.vision.get("track_face", True))
 
-        self.show_preview = bool(settings.vision.get("show_preview", True))
-        self.track_face = bool(settings.vision.get("track_face", True))
-
-        # Make sure we always clean up.
         atexit.register(self.cleanup)
         for sig in ("SIGINT", "SIGTERM"):
             if hasattr(signal, sig):
                 try:
                     signal.signal(getattr(signal, sig), self._on_signal)
                 except (ValueError, OSError):
-                    pass  # not in main thread / not supported
+                    pass
 
     # ------------------------------------------------------------- main loop
     def run(self):
         log.info("Robot starting. Mock mode: %s", self.settings.mock_mode)
         if not self.assistant.ready:
-            log.warning("AI is not ready - check your OPENAI_API_KEY in .env. "
-                        "The face will still run.")
+            log.warning("AI is not ready — check OPENAI_API_KEY in .env.")
+
         self.camera.start()
+        self.feed.start()      # background thread: camera preview stays live always
         self._render(RobotState.IDLE)
 
         try:
             while self.running:
                 if not self._wait_for_face():
                     break
-
                 if not self.wakeword.wait_for_wake(on_tick=lambda: not self.running):
                     continue
 
@@ -91,16 +94,16 @@ class Robot:
                 if question is None:
                     continue
                 if self._is_stop(question):
-                    log.info("Stop word heard - shutting down conversation.")
+                    log.info("Stop word heard — shutting down.")
                     break
 
                 answer, is_fallback = self._get_answer(question)
                 self.face.set_caption(robot=answer)
-
                 self._speak(answer)
                 self._post_expression(question, is_fallback)
                 self.face.clear_caption()
                 self._render(RobotState.IDLE)
+
         except KeyboardInterrupt:
             log.info("Interrupted by keyboard.")
         finally:
@@ -109,50 +112,31 @@ class Robot:
 
     # --------------------------------------------------------- loop helpers
     def _wait_for_face(self):
-        """Idle until a person is seen. Returns False if the user quit."""
-        # Without a camera (mock/dev) just proceed so the loop is testable.
-        if not self.camera.available:
+        """Idle (with live camera preview) until a person is seen."""
+        if not self.feed.available:
+            # No camera — stay in idle briefly so the face still shows.
             self._hold(RobotState.IDLE, 0.5)
             return self.running
 
         log.info("Waiting for a person...")
-        w = self.camera.width
-        h = self.camera.height
-        last_check = 0.0
-        check_interval = 0.2  # run face detection ~5x/sec (cheaper than every frame)
-
         while self.running:
-            self._pump()
-
-            # Render the idle face every frame for smooth blinking...
+            self._refresh_preview()
             self._render(RobotState.IDLE)
 
-            # ...but only run the (heavier) camera capture + detection periodically.
-            now = time.time()
-            if now - last_check < check_interval:
-                continue
-            last_check = now
-
-            frame = self.camera.capture_frame()
-            faces = self.camera.detect_faces(frame) if frame is not None else []
-
-            if self.show_preview and frame is not None:
-                self.face.set_preview(frame)
-            if self.track_face and faces:
-                offset = self.tracker.update(faces, w, h)
-                if offset:
-                    self.head.aim(*offset)
-
-            if faces:
+            if self.feed.has_face:
+                if self.track_face:
+                    offset = self.tracker.update(
+                        self.feed.faces, self.camera.width, self.camera.height)
+                    if offset:
+                        self.head.aim(*offset)
                 log.info("Face detected.")
-                self._hold(RobotState.FACE_DETECTED, 0.5)
+                self._hold(RobotState.FACE_DETECTED, 0.6)
                 return True
         return False
 
     def _listen_and_transcribe(self):
-        """Record the user and return the transcribed text, or None."""
+        """Record the user, transcribe, and return text — or None on failure."""
         self.face.clear_caption()
-        self.state = RobotState.LISTENING
         log.info("Listening...")
 
         audio_file = self.recorder.record_until_silence(
@@ -165,7 +149,7 @@ class Robot:
         question = self.assistant.transcribe(audio_file)
 
         if not question:
-            log.info("Empty/failed transcript - skipping.")
+            log.info("Empty / failed transcript — skipping.")
             self._hold(RobotState.CONFUSED, 1.0)
             return None
 
@@ -174,37 +158,40 @@ class Robot:
         return question
 
     def _get_answer(self, question):
-        """Return (answer_text, is_fallback)."""
-        # 1) Try the fast local FAQ (off by default).
+        """Return (answer_text, is_fallback). Never raises."""
+        # Fast local FAQ (off by default).
         faq = self.knowledge.match_faq(question)
         if faq is not None:
             return faq, False
 
-        # 2) Ask the AI.
+        # Ask the AI.
         self._render(RobotState.THINKING)
         self.messages.append({"role": "user", "content": question})
         self._trim_history()
+
         answer = self.assistant.chat(self.messages)
 
         if answer is None:
-            # Drop the unanswered user turn so history stays clean.
+            # Network / API failure — drop unanswered turn to keep history clean.
             self.messages.pop()
-            return ("Sorry, I'm having trouble connecting right now. "
-                    "Please try again in a moment."), True
+            self._hold(RobotState.ERROR, ERROR_HOLD_SECS)
+            return ("Sorry, I cannot connect right now. "
+                    "Please check the internet connection."), True
 
         self.messages.append({"role": "assistant", "content": answer})
         log.info("Robot: %s", answer)
         return answer, self.assistant.is_fallback(answer)
 
     def _speak(self, text):
-        """Play the TTS answer while animating the mouth."""
-        self.state = RobotState.SPEAKING
-        self.face.set_status(RobotState.SPEAKING.status_text)
+        """Generate and play TTS audio while animating the mouth."""
+        self._render(RobotState.SPEAKING)
 
         audio_out = self.assistant.synthesize(text, self.answer_path)
 
-        if audio_out is None:
-            # No audio - show the answer on screen for a readable moment.
+        if audio_out is None or not os.path.exists(audio_out) \
+                or os.path.getsize(audio_out) < 200:
+            # No audio: show caption for a readable duration then move on.
+            log.warning("No TTS audio — showing caption only.")
             self._hold(RobotState.SPEAKING, min(6.0, max(2.0, len(text) / 15.0)))
             return
 
@@ -214,9 +201,10 @@ class Robot:
             return
 
         while self.player.is_playing() and self.running:
+            self._refresh_preview()
             self._pump()
-            mouth_open = int(time.time() * 6) % 2 == 0
-            self.face.render(RobotState.SPEAKING, mouth_open=mouth_open)
+            self.face.render(RobotState.SPEAKING)   # mouth animation uses time internally
+
         if not self.running:
             self.player.stop()
 
@@ -227,25 +215,36 @@ class Robot:
             self._hold(RobotState.HAPPY, 0.9)
 
     # --------------------------------------------------------- tiny helpers
+    def _refresh_preview(self):
+        """Push the latest camera frame to the face UI — called everywhere."""
+        if self.feed.available:
+            self.face.set_preview(
+                self.feed.frame,
+                faces=self.feed.faces,
+                frame_size=(self.camera.width, self.camera.height))
+
     def _listen_tick(self, volume, started):
-        """Called every audio chunk; keep the UI alive, allow quitting."""
+        """Called every audio chunk to keep the UI alive during recording."""
+        self._refresh_preview()
         self.face.set_status(RobotState.LISTENING.status_text)
         self.face.render(RobotState.LISTENING)
         self._pump()
-        return not self.running  # True => stop recording
+        return not self.running   # returning True stops the recording
 
     def _render(self, state):
         self.state = state
         self.face.set_status(state.status_text)
+        self._refresh_preview()
         self.face.render(state)
         self._pump()
 
     def _hold(self, state, seconds):
-        """Show a state for a while, keeping the UI responsive."""
+        """Show a state for ``seconds`` while keeping the UI responsive."""
         self.state = state
         self.face.set_status(state.status_text)
         end = time.time() + seconds
         while time.time() < end and self.running:
+            self._refresh_preview()
             self.face.render(state)
             self._pump()
 
@@ -262,7 +261,7 @@ class Robot:
 
     def _trim_history(self):
         max_turns = int(self.settings.ai.get("max_history_turns", 12))
-        limit = 1 + max_turns * 2  # system message + N user/assistant pairs
+        limit = 1 + max_turns * 2
         if len(self.messages) > limit:
             self.messages = [self.messages[0]] + self.messages[-(max_turns * 2):]
 
@@ -276,14 +275,13 @@ class Robot:
         t = text.lower()
         return any(w in t for w in GREETING_WORDS)
 
-    # ------------------------------------------------------------- shutdown
+    # ------------------------------------------------------------ shutdown
     def _on_signal(self, signum, frame):
-        log.info("Received signal %s - stopping.", signum)
+        log.info("Received signal %s — stopping.", signum)
         self.running = False
 
     def _maybe_power_off(self):
-        action = self.settings.ui.get("shutdown_action", "quit")
-        if self._do_shutdown and action == "poweroff":
+        if self._do_shutdown and self.settings.ui.get("shutdown_action") == "poweroff":
             log.info("Powering off the Raspberry Pi...")
             try:
                 subprocess.run(["sudo", "shutdown", "-h", "now"], check=False)
@@ -295,20 +293,15 @@ class Robot:
             return
         self._cleaned_up = True
         log.info("Cleaning up...")
-        try:
-            self.player.stop()
-        except Exception:
-            pass
-        try:
-            self.camera.stop()
-        except Exception:
-            pass
-        try:
-            self.wakeword.close()
-        except Exception:
-            pass
-        try:
-            self.face.close()
-        except Exception:
-            pass
+        for component, name in [
+            (self.player,   "player"),
+            (self.feed,     "camera feed"),
+            (self.camera,   "camera"),
+            (self.wakeword, "wakeword"),
+            (self.face,     "face"),
+        ]:
+            try:
+                component.stop() if hasattr(component, "stop") else component.close()
+            except Exception as exc:
+                log.debug("Cleanup error (%s): %s", name, exc)
         log.info("Robot stopped.")

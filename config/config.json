@@ -1,5 +1,5 @@
 {
-  "_comment": "User-editable runtime settings. Safe defaults below match the original robot. Edit values here instead of touching the Python code. Secrets (API keys) go in the .env file, NOT here.",
+  "_comment": "User-editable settings. Edit values here — no need to touch Python code. Secrets go in .env, NOT here.",
 
   "mock_mode": false,
 
@@ -29,7 +29,8 @@
     "min_neighbors": 5,
     "min_face_size": 60,
     "show_preview": true,
-    "track_face": true
+    "track_face": true,
+    "feed_fps": 15
   },
 
   "ai": {
@@ -54,6 +55,11 @@
     "show_captions": true,
     "fullscreen": true,
     "fps": 30,
-    "shutdown_action": "quit"
+    "shutdown_action": "quit",
+
+    "_layout_comment": "Portrait mode for the Pi 7-inch screen in vertical orientation. Set portrait to false for landscape (small thumbnail instead of large preview).",
+    "portrait": true,
+    "preview_height_frac": 0.45,
+    "face_height_frac": 0.29
   }
 }

@@ -51,6 +51,7 @@ DEFAULTS = {
         "min_face_size": 60,
         "show_preview": True,
         "track_face": True,
+        "feed_fps": 15,
     },
     "ai": {
         "chat_model": "gpt-4o-mini",
@@ -73,6 +74,9 @@ DEFAULTS = {
         "fullscreen": True,
         "fps": 30,
         "shutdown_action": "quit",  # "quit" = just stop the program; "poweroff" = shut down the Pi
+        "portrait": False,
+        "preview_height_frac": 0.45,
+        "face_height_frac": 0.29,
     },
 }
 
