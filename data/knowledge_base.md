@@ -21,7 +21,7 @@ ROBOT PROJECT FACTS:
 Name: Smart Campus Guide Robot.
 Built by: Saif Allah Omar.
 Course: Mechatronics at UWE Bristol.
-Hardware: Raspberry Pi 5, EMEET microphone/speaker, Camera Module 3 Wide using Haar Cascades for face detection, Arduino/ESP32, Nextion touchscreen.
+Hardware: Raspberry Pi 5 8GB, Raspberry Pi Camera Module 3, Raspberry Pi official 7-inch touchscreen, EMEET microphone and speaker. Face detection uses Haar Cascades via OpenCV. Currently building the robot head; motors and navigation are planned for future development.
 
 EMERGENCY & SECURITY 24/7/365:
 Immediate Emergency On-Campus: +44 (0)117 328 9999. Internal: 9999.
