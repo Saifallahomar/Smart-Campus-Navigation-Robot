@@ -11,13 +11,20 @@ Built by **Saif Allah Omar** — Mechatronics, UWE Bristol.
 ## Features
 
 - 🎤 AI voice conversation (speech-to-text → AI → text-to-speech)
-- 🌍 Multilingual: replies in the language the user speaks
+- 💬 **Multi-turn chat** — keeps talking with the same person as long as they
+  stay in view; returns to idle when they leave
+- 🌍 **English, Arabic, French** — English is the default; unclear or unsupported
+  speech gets a polite "please repeat" instead of a wrong-language reply
 - 👀 Camera face detection — only listens when a person is present
-- 🙂 Animated face with **emotions**: idle, listening, thinking, speaking, happy, confused
+- 🙂 Animated face with **emotions**: idle, listening, thinking, speaking, happy,
+  confused, error — with smooth blinking and mouth movement
+- 🪧 Clear on-screen **status**: "Looking for a visitor", "Listening", "Thinking", "Speaking"
 - 💬 On-screen captions — shows what you said and what the robot is saying
-- 📷 Live camera preview thumbnail
-- 🧠 UWE campus/student knowledge base (easy to edit)
-- 🛡️ Robust error handling — recovers from network/API problems instead of crashing
+- 📷 Live camera preview with a green face-detection box
+- 🧠 UWE campus/student knowledge base (easy to edit, with TODO spots to add more)
+- 🛡️ Robust error handling — recovers from network/API problems instead of crashing,
+  and shows a friendly notice if the internet or speaker isn't ready
+- 👋 **Optional wave detection** (off by default) — greet someone who waves
 - 📝 Logging to `logs/robot.log` for testing
 - 🔌 Safe shutdown button on screen (and Esc on a keyboard)
 - 🧭 Face tracking + head-controller interface, **ready for future servos**
@@ -40,10 +47,12 @@ robot/
 │   └── faq.json           # optional instant answers
 ├── src/
 │   ├── core/   robot.py, states.py     # the main loop + emotions
+│   │   ├── admin.py                     # settings page (future placeholder)
+│   │   └── modes/  tour_mode.py, navigation_mode.py   # future placeholders
 │   ├── ui/     face.py, theme.py       # the animated face
 │   ├── audio/  recorder.py, player.py, wakeword.py
-│   ├── vision/ camera.py, tracker.py   # face detection + tracking
-│   ├── ai/     assistant.py, knowledge.py
+│   ├── vision/ camera.py, tracker.py, wave.py   # face detection, tracking, waving
+│   ├── ai/     assistant.py, knowledge.py, language.py   # AI + language filter
 │   ├── hardware/ head_controller.py    # servo prep (no motors yet)
 │   └── utils/  logging_setup.py
 ├── legacy/                # all the old scripts/backups (kept for reference)
@@ -90,11 +99,24 @@ Edit **`config/config.json`** — no code changes needed. Key options:
 | `audio.voice_threshold` | How loud counts as speech |
 | `vision.show_preview` | Show the camera thumbnail |
 | `vision.track_face` | Feed face position to the head controller |
+| `ai.chat_model` / `ai.transcribe_model` / `ai.tts_model` | Which OpenAI models to use |
 | `ai.use_local_faq` | Use instant local answers for common English questions |
+| `conversation.person_lost_timeout` | Seconds the person can be out of view before the chat ends (default `8`) |
+| `conversation.max_session_seconds` | Optional hard limit on one chat (default `null` = no limit) |
+| `conversation.farewell_message` | What the robot says when the chat ends |
+| `wave_detection.enabled` | Greet someone who waves (default `false`) |
 | `wake_word.enabled` | Turn on the "hey robot" wake word |
 | `ui.shutdown_action` | `quit` (stop program) or `poweroff` (shut down the Pi) |
 
 Secrets (API keys) go in **`.env`**, never in `config.json`.
+
+### Languages
+
+The robot supports **English, Arabic, and French**, with English as the default.
+If the microphone picks up an unsupported language or an unclear/garbled
+transcription, the robot replies in English and politely asks the person to
+repeat — it will not switch to a random language. The language rules live in
+`data/knowledge_base.md` and the filter logic in `src/ai/language.py`.
 
 ---
 
@@ -121,13 +143,20 @@ commits does **not** remove it from git history, so:
 
 ## Future development
 
-The structure is ready for the next steps:
+The structure is ready for the next steps. Placeholder modules already exist so
+you can build these without restructuring anything:
 
 - **Head movement / person following** — `src/hardware/head_controller.py` already
   receives `aim(dx, dy)` from the face tracker. Subclass it and drive servos in
-  `_apply()`; nothing else needs to change.
-- **Campus tours / navigation** — add a module under `src/core/` and call it from
-  the main loop in `robot.py`.
+  `_apply()`; nothing else needs to change (see the TODO block in that file).
+- **Campus tour mode** — `src/core/modes/tour_mode.py` (placeholder). Fill in
+  `run()` and call it from `robot.py` when a visitor asks for a tour.
+- **Navigation mode** — `src/core/modes/navigation_mode.py` (placeholder). Start
+  with spoken directions; physical guidance needs a mobile base + obstacle sensors.
+- **Admin / settings page** — `src/core/admin.py` (placeholder). A friendly
+  on-screen editor over the same `config.json` values (never edits secrets).
+- **Waving** — already implemented as a lightweight option in `src/vision/wave.py`;
+  turn it on with `wave_detection.enabled` in `config.json`.
 - **Wake word** — set `wake_word.engine` to `porcupine`, add `PORCUPINE_ACCESS_KEY`
   to `.env`, and list keyword files in `config.json`.
 

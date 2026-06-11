@@ -70,6 +70,30 @@ LANGUAGE_NAMES = {
     'french':  'French',
 }
 
+# Short, friendly canned lines the robot can SAY when something goes wrong,
+# without needing the AI. Keyed by situation, then by language so the spoken
+# reply still matches the three supported languages. English is the default.
+FALLBACK_PHRASES = {
+    # Speech-to-text failed or produced nothing usable.
+    'didnt_catch': {
+        'english': "Sorry, I didn't quite catch that. Could you say it again?",
+        'arabic':  "عذرًا، لم أسمع ذلك جيدًا. هل يمكنك إعادة قول ذلك؟",
+        'french':  "Désolé, je n'ai pas bien entendu. Pouvez-vous répéter ?",
+    },
+}
+
+
+def fallback_phrase(situation: str, language: str = 'english') -> str:
+    """
+    Return a friendly canned line for a situation in the given language.
+
+    Falls back to English if the situation or language is unknown, so this
+    never raises and always returns something speakable.
+    """
+    options = FALLBACK_PHRASES.get(situation, {})
+    return options.get(language) or options.get('english') \
+        or "Sorry, could you please repeat that?"
+
 
 # ---------------------------------------------------------------------------
 # Helpers

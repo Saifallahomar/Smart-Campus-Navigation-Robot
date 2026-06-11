@@ -23,12 +23,12 @@ class RobotState(Enum):
     def status_text(self) -> str:
         """Short label shown on screen for this state."""
         return {
-            "idle": "",
+            "idle": "Looking for a visitor",
             "face_detected": "Hello!",
             "listening": "Listening...",
             "thinking": "Thinking...",
             "speaking": "Speaking...",
             "happy": "",
             "confused": "Hmm...",
-            "error": "No internet",
+            "error": "Connection problem",
         }[self.value]

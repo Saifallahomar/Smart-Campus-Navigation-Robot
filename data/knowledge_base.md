@@ -106,6 +106,14 @@ Z Block: Engineering, Mathematics, and Computing. Teaching labs, workshops, mech
 
 Accessibility: Accessible routes, lifts, and disabled parking are available. Contact the Disability and Dyslexia Service for further support.
 
+ROOM-LEVEL DIRECTIONS  [TO BE EXPANDED]
+NOTE TO THE ROBOT: Detailed room-by-room directions inside each block are not
+listed yet. For a specific room, give the block it is in if you know it,
+otherwise suggest the campus map (uwe.ac.uk/map) or the Information Point.
+NOTE TO THE OWNER (Saif): add common rooms here as you confirm them, e.g.:
+  [TODO: add room] Z Block — Mechatronics lab — room number ...
+  [TODO: add room] ... add more ...
+
 ====================================================================
 ENGINEERING AND MECHATRONICS AT UWE
 ====================================================================
@@ -131,6 +139,38 @@ Engineering resources:
 - Engineering workshops, electronics labs, and computer labs are in Z Block.
 - Technicians and demonstrators support scheduled lab sessions.
 - Computing labs with specialist CAD and simulation software are available to enrolled Engineering students.
+
+====================================================================
+COURSES   [TO BE EXPANDED — see note]
+====================================================================
+
+NOTE TO THE ROBOT: The full list of UWE courses has not been added below yet.
+If someone asks about a course that is not listed here, do NOT make one up.
+Say you don't have the full course details and suggest uwe.ac.uk/courses or the
+Information Point in D Block.
+
+NOTE TO THE OWNER (Saif): paste official course info here, one course per line,
+for example:
+  [TODO: add course] BEng (Hons) Mechanical Engineering — Z Block — 3 or 4 years
+  [TODO: add course] BSc (Hons) Computer Science — Z Block
+  [TODO: add course] ... add more from uwe.ac.uk/courses ...
+
+Known so far (verified):
+- Mechatronics Engineering — BEng (Hons) and MEng — Z Block (see section above).
+
+====================================================================
+MODULES   [TO BE EXPANDED — see note]
+====================================================================
+
+NOTE TO THE ROBOT: Specific module names and codes have not been added yet.
+Module codes change each year, so never guess one. If asked about a specific
+module, say you don't have the exact module details and point the person to
+their course handbook on Blackboard, MyUWE, or the Information Point.
+
+NOTE TO THE OWNER (Saif): add real modules from the official course handbook
+here when you have them, for example:
+  [TODO: add module] UFMFK7-15-1  Engineering Design  (Year 1, 15 credits)
+  [TODO: add module] ... add more from your course handbook ...
 
 ====================================================================
 LIBRARY AND STUDY SPACES

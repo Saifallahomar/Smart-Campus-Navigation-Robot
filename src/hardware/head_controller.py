@@ -44,3 +44,16 @@ class HeadController:
             log.debug("Head would aim pan=%.2f tilt=%.2f (no servo connected).",
                       pan, tilt)
             self._last_log = now
+
+    # ----------------------------------------------------------------- future
+    # PERSON FOLLOWING (TODO): the wiring is already here.
+    #   - src/vision/tracker.py turns the detected face box into a smoothed
+    #     (dx, dy) offset from the centre of the frame.
+    #   - src/core/robot.py already calls self.head.aim(dx, dy) with that offset
+    #     while a face is visible (see _wait_for_face / track_face).
+    #   So to make the head physically follow a person you only need to:
+    #     1. Subclass HeadController.
+    #     2. Implement _apply(pan, tilt) to drive two servos (e.g. via gpiozero
+    #        or pigpio) — map pan/tilt (-1..+1) to your servo angle range.
+    #     3. Build that subclass in robot.py instead of the base HeadController.
+    #   Nothing else in the loop needs to change.

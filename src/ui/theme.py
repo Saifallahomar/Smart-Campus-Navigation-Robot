@@ -35,7 +35,7 @@ EYE_COLORS = {
 
 # --- Per-state status badge background colour -------------------------------
 BADGE_COLORS = {
-    "idle":           None,             # no badge for idle
+    "idle":           (28,  38,  64),   # subtle muted badge: "Looking for a visitor"
     "face_detected":  (30,  100,  60),
     "listening":      (20,   90,  55),
     "thinking":       (100,  75,  20),

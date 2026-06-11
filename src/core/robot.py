@@ -31,7 +31,11 @@ import time
 from config.settings import settings
 from src.ai.assistant import Assistant
 from src.ai.knowledge import Knowledge
-from src.ai.language import UNSUPPORTED_REPLY, is_supported_input
+from src.ai.language import (
+    UNSUPPORTED_REPLY,
+    fallback_phrase,
+    is_supported_input,
+)
 from src.audio.player import Player
 from src.audio.recorder import Recorder
 from src.audio.wakeword import WakeWord
@@ -112,11 +116,12 @@ class Robot:
 
     def run(self):
         log.info("Robot starting. Mock mode: %s", self.settings.mock_mode)
-        if not self.assistant.ready:
-            log.warning("AI is not ready — check OPENAI_API_KEY in .env.")
 
         self.camera.start()
         self.feed.start()      # background thread keeps camera preview live
+
+        # One-time, friendly checks so problems are visible instead of silent.
+        self._startup_checks()
         self._render(RobotState.IDLE)
 
         try:
@@ -132,6 +137,40 @@ class Robot:
         finally:
             self.cleanup()
             self._maybe_power_off()
+
+    # ====================================================== startup checks
+
+    def _startup_checks(self):
+        """
+        Friendly, one-time checks at boot. Nothing here stops the robot — the
+        face always runs — but problems are logged clearly and shown on screen
+        so they are easy to spot instead of failing silently.
+        """
+        # Microphone
+        if not getattr(self.recorder, "available", False) and not self.settings.mock_mode:
+            log.warning("Microphone not available — check devices.mic_device in config.json.")
+
+        # Speaker
+        if not self.settings.mock_mode and not self.player.aplay_available():
+            log.warning("Speaker tool 'aplay' missing — install alsa-utils for sound.")
+
+        # AI / internet. If it's not ready the robot stays open and recovers
+        # automatically once the key/internet is sorted, so just notify.
+        if not self.assistant.ready:
+            log.warning("AI is not ready — check OPENAI_API_KEY in .env and the internet.")
+            self._show_startup_notice(
+                "Starting up... waiting for the internet / AI connection.")
+
+    def _show_startup_notice(self, message, seconds=4.0):
+        """
+        Show a brief friendly notice on the ERROR face, then carry on. The badge
+        shows the ERROR status ("Connection problem"); the caption shows the
+        detail message. The robot keeps running and recovers on its own once the
+        connection is back.
+        """
+        self.face.set_caption(robot=message)
+        self._hold(RobotState.ERROR, seconds)
+        self.face.clear_caption()
 
     # ========================================================= session loop
 
@@ -306,8 +345,15 @@ class Robot:
         question = self.assistant.transcribe(audio_file)
 
         if not question:
-            log.info("Empty or failed transcript — skipping.")
-            self._hold(RobotState.CONFUSED, 1.0)
+            # Unclear speech or failed transcription — say a friendly line in
+            # English (we have no reliable text to detect a language from) and
+            # invite the person to try again, instead of silently moving on.
+            log.info("Empty or failed transcript — asking the user to repeat.")
+            self._hold(RobotState.CONFUSED, 0.6)
+            line = fallback_phrase("didnt_catch", "english")
+            self.face.set_caption(robot=line)
+            self._speak(line)
+            self.face.clear_caption()
             return None
 
         log.info("You said: %s", question)
