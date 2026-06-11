@@ -78,6 +78,24 @@ DEFAULTS = {
         "preview_height_frac": 0.45,
         "face_height_frac": 0.29,
     },
+    "conversation": {
+        # Seconds a person can be absent before the session ends.
+        "person_lost_timeout": 8,
+        # Maximum seconds for one session (null = unlimited).
+        "max_session_seconds": None,
+        # What the robot says at the end of a session.
+        "farewell_message": "Bye! Have a great day!",
+    },
+    "wave_detection": {
+        # Lightweight frame-differencing wave detector (disabled by default).
+        "enabled": False,
+        # Pixel difference needed to count as motion (0-255, higher = less sensitive).
+        "motion_threshold": 30,
+        # How many consecutive motion frames before a wave is confirmed.
+        "min_motion_frames": 8,
+        # Minimum seconds between consecutive wave events.
+        "cooldown_seconds": 3.0,
+    },
 }
 
 

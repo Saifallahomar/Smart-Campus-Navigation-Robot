@@ -61,5 +61,22 @@
     "portrait": true,
     "preview_height_frac": 0.45,
     "face_height_frac": 0.29
+  },
+
+  "conversation": {
+    "_comment": "How long the robot stays in conversation mode after the person stops talking or leaves.",
+    "person_lost_timeout": 8,
+    "_max_session_comment": "Set max_session_seconds to a number (e.g. 300) to limit session length, or leave null for unlimited.",
+    "max_session_seconds": null,
+    "farewell_message": "Bye! Have a great day!"
+  },
+
+  "wave_detection": {
+    "_comment": "Experimental wave-gesture detection. Set enabled to true to try it. The robot will greet someone who waves before they speak.",
+    "enabled": false,
+    "_threshold_comment": "motion_threshold: 0-255, higher = less sensitive. min_motion_frames: how many frames of motion before confirming a wave.",
+    "motion_threshold": 30,
+    "min_motion_frames": 8,
+    "cooldown_seconds": 3.0
   }
 }
