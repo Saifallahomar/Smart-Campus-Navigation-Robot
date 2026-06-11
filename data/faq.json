@@ -1,21 +1,86 @@
 {
-  "_comment": "Optional fast local answers for very common ENGLISH questions. These are matched BEFORE calling the AI to save time/cost. Matching only runs when ai.use_local_faq is true in config.json (default off, because fixed answers cannot follow the user's language). Each entry: 'patterns' = lowercase keywords that must ALL appear in the question; 'answer' = exact reply.",
+  "_comment": "Optional fast local answers for very common ENGLISH questions. These are matched BEFORE calling the AI to save time and cost. Only active when ai.use_local_faq is set to true in config.json (default: off). Each entry: 'patterns' = lowercase keywords that must ALL appear in the question; 'answer' = exact reply. Add as many entries as you like — the AI is used if nothing matches.",
+
   "faqs": [
     {
       "patterns": ["library", "open"],
       "answer": "The Frenchay Library in D Block is open 24/7 and you get in with your student ID card."
     },
     {
+      "patterns": ["library", "where"],
+      "answer": "The Library is in D Block. It is open 24 hours a day, 7 days a week. You need your student ID card to enter."
+    },
+    {
       "patterns": ["emergency"],
-      "answer": "For an on-campus emergency call +44 (0)117 328 9999, or internal 9999. For Police, Ambulance or Fire dial 999."
+      "answer": "For an on-campus emergency call +44 (0)117 328 9999, or just dial 9999 from a campus phone. For Police, Ambulance, or Fire dial 999."
     },
     {
       "patterns": ["who", "built", "you"],
-      "answer": "I am the Smart Campus Guide Robot, built by Saif Allah Omar, a Mechatronics student at UWE Bristol."
+      "answer": "I am the Smart Campus Guide Robot, built by Saif Allah Omar, a Mechatronics Engineering student at UWE Bristol."
+    },
+    {
+      "patterns": ["what", "are", "you"],
+      "answer": "I am the Smart Campus Guide Robot at UWE Bristol. I can help you find buildings, answer student questions, and guide you around Frenchay Campus. I speak English, Arabic, and French."
     },
     {
       "patterns": ["open", "day"],
-      "answer": "UWE on-campus open days in 2026 are June 6th, October 10th and November 21st. There is also a virtual open day on December 2nd."
+      "answer": "UWE on-campus open days in 2026 are June 6th, October 10th, and November 21st. There is also a virtual open day on December 2nd. Book at uwe.ac.uk/opendays."
+    },
+    {
+      "patterns": ["engineering", "where"],
+      "answer": "Engineering is in Z Block. That is also where the Mechatronics labs and workshops are."
+    },
+    {
+      "patterns": ["robotics", "lab"],
+      "answer": "The Bristol Robotics Laboratory (BRL) is in T Block. It is a joint research centre between UWE Bristol and the University of Bristol — one of the largest robotics labs in the UK."
+    },
+    {
+      "patterns": ["canteen", "food"],
+      "answer": "The main cafeteria is Onezone in E Block. It has hot meals, sandwiches, snacks, and a Starbucks. The campus is cashless — card or mobile payment only."
+    },
+    {
+      "patterns": ["cafe", "coffee"],
+      "answer": "There is a Starbucks inside Onezone in E Block, and Costa Coffee in several campus buildings. The campus is cashless — card or mobile payment only."
+    },
+    {
+      "patterns": ["students", "union"],
+      "answer": "The Students' Union is in U Block. Phone: +44 (0)117 32 82577. They run clubs, societies, and welfare services. The SU Advice Centre is also there: +44 (0)117 32 82676."
+    },
+    {
+      "patterns": ["infohub", "information"],
+      "answer": "The Information Point (InfoHub) is in D Block, Room 1D11. Phone: +44 (0)117 32 85678. They help with course queries, extensions, module registration, and general campus information."
+    },
+    {
+      "patterns": ["accommodation", "where"],
+      "answer": "Accommodation Services is in N Block, Level 2, Room 2N02. Phone: +44 (0)117 32 83601. Email: accommodation@uwe.ac.uk."
+    },
+    {
+      "patterns": ["health", "doctor"],
+      "answer": "The University Health Centre is an NHS GP practice in N Block, Level 2, Room 2N009. Phone: +44 (0)117 328 6666. Register as a patient early in the year."
+    },
+    {
+      "patterns": ["wellbeing", "counselling"],
+      "answer": "UWE Wellbeing Services offers counselling and mental health support. Phone: +44 (0)117 32 86268, Monday to Friday 08:30-16:30. For 24/7 support, call the free SAP helpline on +44 (0)800 028 3766."
+    },
+    {
+      "patterns": ["mechatronics", "course"],
+      "answer": "Mechatronics Engineering at UWE offers BEng (Hons) and MEng degrees. It combines mechanical engineering, electronics, computing, and control systems. The department is in Z Block. Visit uwe.ac.uk for full course details."
+    },
+    {
+      "patterns": ["wifi", "internet"],
+      "answer": "Connect to UWE-Secure using your UWE login. Eduroam is also available across campus. Wi-Fi covers all main buildings."
+    },
+    {
+      "patterns": ["parking", "car"],
+      "answer": "A parking permit is required to park on campus. Spaces are limited. Check uwe.ac.uk/parking for permit information."
+    },
+    {
+      "patterns": ["bus", "transport"],
+      "answer": "The M1 MetroBus and other First Bus routes serve Frenchay Campus. UWE students can get discounted bus passes — check uwe.ac.uk/travel for details."
+    },
+    {
+      "patterns": ["which", "campus"],
+      "answer": "You are on Frenchay Campus — the main UWE Bristol campus at Coldharbour Lane, Bristol, BS16 1QY."
     }
   ]
 }

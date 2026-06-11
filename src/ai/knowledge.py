@@ -1,10 +1,16 @@
 """
 Campus knowledge: the system prompt + an optional fast local FAQ.
 
-The big UWE knowledge text now lives in data/knowledge_base.md (easy to edit
-without touching code). The FAQ in data/faq.json can answer very common ENGLISH
-questions instantly, before calling the AI - but it's OFF by default because a
-fixed answer can't follow the user's spoken language.
+The UWE knowledge text lives in data/knowledge_base.md (easy to edit without
+touching code). The language policy (English / Arabic / French only) is defined
+there so the AI always follows it.
+
+The FAQ in data/faq.json can answer very common ENGLISH questions instantly,
+before calling the AI — off by default because fixed answers cannot follow the
+user's language.
+
+Language detection (filtering unsupported scripts before the AI call) is handled
+by src/ai/language.py and applied in src/core/robot.py.
 """
 
 import json
@@ -14,8 +20,12 @@ from src.utils.logging_setup import get_logger
 log = get_logger("knowledge")
 
 _DEFAULT_PROMPT = (
-    "You are a professional and friendly university campus guide robot. "
-    "Keep answers short, clear, and helpful. Reply in the user's language."
+    "You are a professional and friendly university campus guide robot at UWE Bristol. "
+    "Keep answers short, clear, and helpful. "
+    "You ONLY reply in English, Arabic, or French — never in any other language. "
+    "English is the default language. "
+    "If you are not sure about an answer, say: "
+    "'I'm not sure about that. Please check uwe.ac.uk or ask at the Information Point in D Block.'"
 )
 
 

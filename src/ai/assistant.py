@@ -30,7 +30,15 @@ except ImportError:
     _HAS_TYPED_ERRORS = False
 
 # Phrases in the AI's reply that mean "I couldn't help" → show confused face.
-_FALLBACK_MARKERS = ["i am sorry, i can't help", "i'm sorry, i can't help"]
+_FALLBACK_MARKERS = [
+    "i am sorry, i can't help",
+    "i'm sorry, i can't help",
+    "i'm not sure about that",       # matches new knowledge_base.md fallback
+    "i am not sure about that",
+    "لست متأكد",                      # Arabic: I'm not sure
+    "je ne suis pas sûr",            # French: I'm not sure (masc)
+    "je ne suis pas sûre",           # French: I'm not sure (fem)
+]
 
 
 class Assistant:

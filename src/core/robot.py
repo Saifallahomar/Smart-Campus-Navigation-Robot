@@ -19,6 +19,7 @@ import time
 from config.settings import settings
 from src.ai.assistant import Assistant
 from src.ai.knowledge import Knowledge
+from src.ai.language import UNSUPPORTED_REPLY, is_supported_input
 from src.audio.player import Player
 from src.audio.recorder import Recorder
 from src.audio.wakeword import WakeWord
@@ -31,8 +32,8 @@ from src.vision.tracker import FaceTracker
 
 log = get_logger("robot")
 
-STOP_WORDS     = ["stop", "exit", "توقف"]
-GREETING_WORDS = ["hello", "hi", "hey", "مرحبا", "السلام", "salut", "bonjour", "hola"]
+STOP_WORDS     = ["stop", "exit", "توقف", "arrêt"]
+GREETING_WORDS = ["hello", "hi", "hey", "مرحبا", "السلام", "أهلا", "salut", "bonjour", "bonsoir"]
 
 # How long to show the ERROR face before returning to idle.
 ERROR_HOLD_SECS = 2.0
@@ -96,6 +97,16 @@ class Robot:
                 if self._is_stop(question):
                     log.info("Stop word heard — shutting down.")
                     break
+
+                # Reject unsupported scripts (Chinese, Cyrillic, etc.) or garbled STT output.
+                if not is_supported_input(question):
+                    log.info("Unsupported language or garbled input — asking to repeat.")
+                    self.face.set_caption(robot=UNSUPPORTED_REPLY)
+                    self._speak(UNSUPPORTED_REPLY)
+                    self.face.clear_caption()
+                    self._hold(RobotState.CONFUSED, 0.5)
+                    self._render(RobotState.IDLE)
+                    continue
 
                 answer, is_fallback = self._get_answer(question)
                 self.face.set_caption(robot=answer)
