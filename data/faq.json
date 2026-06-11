@@ -1,0 +1,21 @@
+{
+  "_comment": "Optional fast local answers for very common ENGLISH questions. These are matched BEFORE calling the AI to save time/cost. Matching only runs when ai.use_local_faq is true in config.json (default off, because fixed answers cannot follow the user's language). Each entry: 'patterns' = lowercase keywords that must ALL appear in the question; 'answer' = exact reply.",
+  "faqs": [
+    {
+      "patterns": ["library", "open"],
+      "answer": "The Frenchay Library in D Block is open 24/7 and you get in with your student ID card."
+    },
+    {
+      "patterns": ["emergency"],
+      "answer": "For an on-campus emergency call +44 (0)117 328 9999, or internal 9999. For Police, Ambulance or Fire dial 999."
+    },
+    {
+      "patterns": ["who", "built", "you"],
+      "answer": "I am the Smart Campus Guide Robot, built by Saif Allah Omar, a Mechatronics student at UWE Bristol."
+    },
+    {
+      "patterns": ["open", "day"],
+      "answer": "UWE on-campus open days in 2026 are June 6th, October 10th and November 21st. There is also a virtual open day on December 2nd."
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+# Secrets - NEVER commit these
+.env
+.env.save
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Generated audio / runtime files
+*.wav
+logs/
+*.log
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

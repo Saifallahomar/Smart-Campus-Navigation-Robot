@@ -1,0 +1,4 @@
+# Shell scripts are edited on Windows but run on the Raspberry Pi (Linux).
+# Force LF so they don't break with CRLF line endings.
+*.sh text eol=lf
+start_robot.sh text eol=lf

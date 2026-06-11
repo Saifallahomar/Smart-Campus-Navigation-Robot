@@ -1,0 +1,59 @@
+{
+  "_comment": "User-editable runtime settings. Safe defaults below match the original robot. Edit values here instead of touching the Python code. Secrets (API keys) go in the .env file, NOT here.",
+
+  "mock_mode": false,
+
+  "language": "auto",
+
+  "devices": {
+    "mic_device": 1,
+    "speaker_device": "plughw:2,0",
+    "mic_auto_detect_name": "EMEET",
+    "speaker_auto_detect": false
+  },
+
+  "audio": {
+    "sample_rate": 16000,
+    "chunk_seconds": 0.2,
+    "voice_threshold": 500,
+    "silence_to_stop": 0.9,
+    "max_record_seconds": 10
+  },
+
+  "vision": {
+    "enabled": true,
+    "frame_width": 640,
+    "frame_height": 480,
+    "cascade_path": "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml",
+    "scale_factor": 1.2,
+    "min_neighbors": 5,
+    "min_face_size": 60,
+    "show_preview": true,
+    "track_face": true
+  },
+
+  "ai": {
+    "chat_model": "gpt-4o-mini",
+    "transcribe_model": "gpt-4o-mini-transcribe",
+    "tts_model": "gpt-4o-mini-tts",
+    "tts_voice": "alloy",
+    "max_history_turns": 12,
+    "use_local_faq": false,
+    "request_timeout": 30,
+    "max_retries": 2
+  },
+
+  "wake_word": {
+    "enabled": false,
+    "engine": "energy",
+    "keywords": ["hey robot", "hello robot"],
+    "porcupine_keyword_paths": []
+  },
+
+  "ui": {
+    "show_captions": true,
+    "fullscreen": true,
+    "fps": 30,
+    "shutdown_action": "quit"
+  }
+}
