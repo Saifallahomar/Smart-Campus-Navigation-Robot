@@ -105,12 +105,18 @@ DEFAULTS = {
         "min_angle": -90,
         "max_angle": 90,
         "center_angle": 0,
+        # Fraction of remaining distance moved per tick (lower = gentler glide).
+        "smoothing": 0.18,
         # How fast the head may turn (smaller = gentler).
-        "max_speed_deg_per_sec": 120,
-        # Ignore offsets smaller than this so it doesn't jitter when centred.
-        "deadzone_deg": 1.0,
+        "max_speed_deg_per_sec": 90,
+        # How close counts as "arrived" (then it stops).
+        "deadzone_deg": 2.0,
+        # How big a change must be to start moving again (> deadzone = no twitch).
+        "wake_zone_deg": 5.0,
         # Once settled, wait this long then stop pulsing so the servo is silent.
         "idle_release_seconds": 1.5,
+        # After a person leaves, wait this long then return the head to centre.
+        "recenter_delay_seconds": 1.5,
         # Flip if the head turns the wrong way.
         "invert": False,
         # Pulse widths (ms) — defaults suit a typical SG90.

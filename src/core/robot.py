@@ -103,6 +103,11 @@ class Robot:
         self.messages    = self.knowledge.build_messages()
         self.state       = RobotState.IDLE
         self.track_face  = bool(settings.vision.get("track_face", True))
+        # Head-tracking idle handling: when nobody is seen for this long, gently
+        # return the head to the middle and let it rest there.
+        self._face_gone_since = None
+        self._recenter_delay = float((settings.get("servo") or {}).get(
+            "recenter_delay_seconds", 1.5))
 
         atexit.register(self.cleanup)
         for sig in ("SIGINT", "SIGTERM"):
@@ -424,11 +429,22 @@ class Robot:
             # Continuous head tracking: follow the person through the whole
             # interaction (waiting, listening, thinking, speaking), not just on
             # first sight. The head controller smooths the motion itself.
-            if self.track_face and self.feed.has_face:
-                offset = self.tracker.update(
-                    self.feed.faces, self.camera.width, self.camera.height)
-                if offset:
-                    self.head.aim(*offset)
+            if self.track_face:
+                if self.feed.has_face:
+                    offset = self.tracker.update(
+                        self.feed.faces, self.camera.width, self.camera.height)
+                    if offset:
+                        self.head.aim(*offset)
+                    self._face_gone_since = None
+                else:
+                    # Nobody in view. Wait a short grace period (face detection
+                    # flickers) then glide the head back to the middle and rest.
+                    now = time.time()
+                    if self._face_gone_since is None:
+                        self._face_gone_since = now
+                    elif now - self._face_gone_since > self._recenter_delay:
+                        self.tracker.reset()
+                        self.head.center()
 
     def _listen_tick(self, volume, started):
         """Called every audio chunk to keep the UI alive during recording."""

@@ -64,8 +64,16 @@ class ServoHead(HeadController):
         self.min_angle  = float(cfg.get("min_angle", -90.0))
         self.max_angle  = float(cfg.get("max_angle", 90.0))
         self.center_ang = float(cfg.get("center_angle", 0.0))
-        self.max_speed  = float(cfg.get("max_speed_deg_per_sec", 120.0))
-        self.deadzone   = float(cfg.get("deadzone_deg", 1.0))
+        self.max_speed  = float(cfg.get("max_speed_deg_per_sec", 90.0))
+        # Fraction of the remaining distance covered each tick (ease-out). Lower
+        # = smoother and gentler; higher = snappier.
+        self.smoothing  = float(cfg.get("smoothing", 0.18))
+        # deadzone: how close counts as "arrived" (then it stops).
+        # wake_zone: how big a change must be to start moving again. wake_zone
+        # being larger than deadzone gives hysteresis, so small camera wobble
+        # doesn't make the servo twitch.
+        self.deadzone   = float(cfg.get("deadzone_deg", 2.0))
+        self.wake_zone  = float(cfg.get("wake_zone_deg", 5.0))
         self.invert     = bool(cfg.get("invert", False))
         self.idle_release = float(cfg.get("idle_release_seconds", 1.5))
         # Pulse widths in seconds. SG90 full range is roughly 0.5ms..2.5ms.
@@ -78,6 +86,7 @@ class ServoHead(HeadController):
         self._stop = threading.Event()
         self._last_move = time.time()
         self._detached = False
+        self._moving = False
 
         if not _GPIOZERO_OK:
             log.warning("Servo requested but gpiozero is unavailable; "
@@ -138,22 +147,37 @@ class ServoHead(HeadController):
         while not self._stop.is_set():
             target = self._target_angle()
             diff = target - self._cur_angle
+            adiff = abs(diff)
 
-            if abs(diff) <= self.deadzone:
-                # Settled. After a quiet spell, stop pulsing so the servo is silent.
+            # Hysteresis: start moving only for a clearly real change, and keep
+            # moving until comfortably settled. This stops tiny camera wobble
+            # from making the servo shake.
+            if self._moving:
+                if adiff <= self.deadzone:
+                    self._moving = False
+            elif adiff >= self.wake_zone:
+                self._moving = True
+
+            if not self._moving:
+                # Resting. After a quiet spell, stop pulsing so the servo goes
+                # silent (no buzz) and takes a break.
                 if (not self._detached
                         and time.time() - self._last_move > self.idle_release):
                     self._detach()
                 self._stop.wait(dt)
                 continue
 
-            # We need to move — make sure pulses are on.
-            if self._detached:
-                self._detached = False
+            # Moving: ease-out toward the target (covers a fraction of the
+            # remaining distance each tick, so it decelerates as it arrives),
+            # capped to a max speed so it always glides smoothly.
+            self._detached = False
             self._last_move = time.time()
-
+            step = diff * self.smoothing
             max_step = self.max_speed * dt
-            step = max(-max_step, min(max_step, diff))
+            if step > max_step:
+                step = max_step
+            elif step < -max_step:
+                step = -max_step
             self._cur_angle += step
             self._write(self._cur_angle)
             self._stop.wait(dt)
