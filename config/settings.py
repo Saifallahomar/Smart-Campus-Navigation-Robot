@@ -96,6 +96,27 @@ DEFAULTS = {
         # Minimum seconds between consecutive wave events.
         "cooldown_seconds": 3.0,
     },
+    "servo": {
+        # Single pan servo that turns the head to follow a face.
+        "enabled": True,
+        # Signal pin (BCM numbering). GPIO 18 = physical pin 12.
+        "gpio_pin": 18,
+        # Safe sweep range in degrees.
+        "min_angle": -90,
+        "max_angle": 90,
+        "center_angle": 0,
+        # How fast the head may turn (smaller = gentler).
+        "max_speed_deg_per_sec": 120,
+        # Ignore offsets smaller than this so it doesn't jitter when centred.
+        "deadzone_deg": 1.0,
+        # Once settled, wait this long then stop pulsing so the servo is silent.
+        "idle_release_seconds": 1.5,
+        # Flip if the head turns the wrong way.
+        "invert": False,
+        # Pulse widths (ms) — defaults suit a typical SG90.
+        "min_pulse_width_ms": 0.5,
+        "max_pulse_width_ms": 2.5,
+    },
 }
 
 

@@ -78,5 +78,23 @@
     "motion_threshold": 30,
     "min_motion_frames": 8,
     "cooldown_seconds": 3.0
+  },
+
+  "servo": {
+    "_comment": "Single pan servo that turns the head to follow a face. Signal -> GPIO 18 (physical pin 12), power -> 5V, ground -> GND. Set enabled to false if no servo is connected.",
+    "enabled": true,
+    "gpio_pin": 18,
+    "_angle_comment": "Safe sweep range, in degrees. Narrow these if the head hits something.",
+    "min_angle": -90,
+    "max_angle": 90,
+    "center_angle": 0,
+    "_motion_comment": "max_speed_deg_per_sec limits how fast the head turns (smaller = gentler). deadzone_deg ignores tiny offsets so it doesn't jitter. idle_release_seconds: how long to wait, once settled, before the servo goes quiet.",
+    "max_speed_deg_per_sec": 120,
+    "deadzone_deg": 1.0,
+    "idle_release_seconds": 1.5,
+    "_mount_comment": "Set invert to true if the head turns the wrong way. Pulse widths suit a typical SG90; adjust if your servo's range is off.",
+    "invert": false,
+    "min_pulse_width_ms": 0.5,
+    "max_pulse_width_ms": 2.5
   }
 }

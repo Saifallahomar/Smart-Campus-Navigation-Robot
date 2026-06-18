@@ -40,7 +40,7 @@ from src.audio.player import Player
 from src.audio.recorder import Recorder
 from src.audio.wakeword import WakeWord
 from src.core.states import RobotState
-from src.hardware.head_controller import HeadController
+from src.hardware.head_controller import build_head_controller
 from src.ui.face import Face
 from src.utils.logging_setup import get_logger
 from src.vision.camera import Camera, CameraFeed
@@ -89,7 +89,7 @@ class Robot:
         self.knowledge = Knowledge(settings)
         self.wakeword  = WakeWord(settings)
         self.tracker   = FaceTracker()
-        self.head      = HeadController(settings)
+        self.head      = build_head_controller(settings)
 
         # Wave detection (lightweight, disabled by default)
         wave_cfg = settings.get('wave_detection') or {}
@@ -269,11 +269,7 @@ class Robot:
             self._render(RobotState.IDLE)
 
             if self.feed.has_face:
-                if self.track_face:
-                    offset = self.tracker.update(
-                        self.feed.faces, self.camera.width, self.camera.height)
-                    if offset:
-                        self.head.aim(*offset)
+                # _refresh_preview() above already drives head tracking.
                 log.info("Face detected.")
                 self._greet_on_face_detect()
                 return True
@@ -425,6 +421,14 @@ class Robot:
                 self.feed.frame,
                 faces=self.feed.faces,
                 frame_size=(self.camera.width, self.camera.height))
+            # Continuous head tracking: follow the person through the whole
+            # interaction (waiting, listening, thinking, speaking), not just on
+            # first sight. The head controller smooths the motion itself.
+            if self.track_face and self.feed.has_face:
+                offset = self.tracker.update(
+                    self.feed.faces, self.camera.width, self.camera.height)
+                if offset:
+                    self.head.aim(*offset)
 
     def _listen_tick(self, volume, started):
         """Called every audio chunk to keep the UI alive during recording."""
@@ -507,6 +511,7 @@ class Robot:
             (self.feed,     "camera feed"),
             (self.camera,   "camera"),
             (self.wakeword, "wakeword"),
+            (self.head,     "head"),
             (self.face,     "face"),
         ]:
             try:

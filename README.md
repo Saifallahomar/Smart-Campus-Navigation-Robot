@@ -27,7 +27,8 @@ Built by **Saif Allah Omar** — Mechatronics, UWE Bristol.
 - 👋 **Optional wave detection** (off by default) — greet someone who waves
 - 📝 Logging to `logs/robot.log` for testing
 - 🔌 Safe shutdown button on screen (and Esc on a keyboard)
-- 🧭 Face tracking + head-controller interface, **ready for future servos**
+- 🧭 **Head tracking with a real servo** — the head smoothly follows the person's
+  face (pan servo on GPIO 18; gentle, speed-limited, goes quiet when settled)
 - 🗣️ Optional wake word (off by default)
 
 ---
@@ -53,7 +54,7 @@ robot/
 │   ├── audio/  recorder.py, player.py, wakeword.py
 │   ├── vision/ camera.py, tracker.py, wave.py   # face detection, tracking, waving
 │   ├── ai/     assistant.py, knowledge.py, language.py   # AI + language filter
-│   ├── hardware/ head_controller.py    # servo prep (no motors yet)
+│   ├── hardware/ head_controller.py, servo_head.py   # head tracking servo
 │   └── utils/  logging_setup.py
 ├── legacy/                # all the old scripts/backups (kept for reference)
 └── logs/                  # created automatically
@@ -106,6 +107,11 @@ Edit **`config/config.json`** — no code changes needed. Key options:
 | `conversation.farewell_message` | What the robot says when the chat ends |
 | `wave_detection.enabled` | Greet someone who waves (default `false`) |
 | `wake_word.enabled` | Turn on the "hey robot" wake word |
+| `servo.enabled` | Turn the head-tracking servo on/off (default `true`) |
+| `servo.gpio_pin` | Servo signal pin (default `18` = physical pin 12) |
+| `servo.min_angle` / `servo.max_angle` | Safe left/right sweep range, in degrees |
+| `servo.max_speed_deg_per_sec` | How fast the head turns (smaller = gentler) |
+| `servo.invert` | `true` if the head turns the wrong way |
 | `ui.shutdown_action` | `quit` (stop program) or `poweroff` (shut down the Pi) |
 
 Secrets (API keys) go in **`.env`**, never in `config.json`.
@@ -146,9 +152,11 @@ commits does **not** remove it from git history, so:
 The structure is ready for the next steps. Placeholder modules already exist so
 you can build these without restructuring anything:
 
-- **Head movement / person following** — `src/hardware/head_controller.py` already
-  receives `aim(dx, dy)` from the face tracker. Subclass it and drive servos in
-  `_apply()`; nothing else needs to change (see the TODO block in that file).
+- **Head movement / person following** — implemented for a single pan servo in
+  `src/hardware/servo_head.py` (smooth, speed-limited, auto-quiet when settled).
+  A second servo for tilt can be added the same way. Wiring: servo signal → GPIO 18
+  (physical pin 12), power → 5V (pin 2/4), ground → GND (pin 6). For a high-torque
+  servo use a separate 5V supply and share the ground with the Pi.
 - **Campus tour mode** — `src/core/modes/tour_mode.py` (placeholder). Fill in
   `run()` and call it from `robot.py` when a visitor asks for a tour.
 - **Navigation mode** — `src/core/modes/navigation_mode.py` (placeholder). Start

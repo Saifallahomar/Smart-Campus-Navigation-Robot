@@ -16,6 +16,14 @@ numpy>=1.24.0
 pygame>=2.5.0
 opencv-python>=4.8.0
 
+# Servo head tracking (single pan servo on a GPIO pin).
+# gpiozero and its pin backend (lgpio) ship PREINSTALLED on Raspberry Pi OS, so
+# with a --system-site-packages venv you don't need to install anything and the
+# servo works out of the box. If servo support is missing, the robot still runs
+# (it just won't move the head). Listed here for reference / non-Pi-OS setups:
+# gpiozero>=2.0
+# lgpio>=0.2.2.0
+
 # Optional - only needed if you turn on the Porcupine wake word engine.
 # Uncomment to install:
 # pvporcupine>=3.0.0
