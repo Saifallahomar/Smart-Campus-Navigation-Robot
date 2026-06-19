@@ -103,12 +103,22 @@ HEAD_ACKS = {
 
 # --- "What can you see?" one-shot camera vision -------------------------------
 VISION_QUERY_PHRASES = [
-    "what can you see", "what do you see", "describe what you can see",
-    "describe what you see", "what's in front of you", "what is in front of you",
-    "describe the scene", "what are you looking at", "can you see anything",
-    "what can you see right now",
-    "ماذا ترى", "ماذا تشاهد", "صف ما تراه",
-    "que vois-tu", "que voyez-vous", "qu'est-ce que tu vois", "décris ce que tu vois",
+    # what do/can you see
+    "what can you see", "what do you see", "what are you seeing",
+    "describe what you can see", "describe what you see", "describe the scene",
+    "what's in front of you", "what is in front of you",
+    "what can you see right now", "what do you see right now",
+    "what are you looking at", "can you see anything",
+    # can/do you see me / people
+    "can you see me", "do you see me", "can you see us",
+    "are you looking at me", "do you see anyone",
+    "am i in front of you", "am i visible to you",
+    "is anyone in front of you", "is there anyone in front of you",
+    # Arabic
+    "ماذا ترى", "ماذا تشاهد", "صف ما تراه", "هل تراني",
+    # French
+    "que vois-tu", "que voyez-vous", "qu'est-ce que tu vois",
+    "décris ce que tu vois", "est-ce que tu me vois",
 ]
 CAMERA_UNAVAILABLE = {
     "english": "Sorry, my camera isn't available right now.",
@@ -360,22 +370,25 @@ class Robot:
         """
         Brief greeting when someone first appears.
 
-        If wave detection is enabled, watch for a wave for up to 2 seconds
-        and greet proactively. Otherwise show the standard face-detected
-        animation for 0.6 s.
+        If wave detection is enabled, watch for a wave for up to 1.5 seconds
+        and show a notice on the screen. Either way the robot always speaks a
+        short hello so the person knows it's ready to listen.
         """
         if self.wave_detector.enabled:
-            deadline = time.time() + 2.0
+            deadline = time.time() + 1.5
             while self.running and time.time() < deadline and self.feed.has_face:
                 self._refresh_preview()
                 self._render(RobotState.FACE_DETECTED)
                 if self.feed.frame is not None:
                     if self.wave_detector.update(self.feed.frame, self.feed.faces):
-                        log.info("Wave detected — greeting proactively.")
-                        self._proactive_greet()
-                        return
+                        log.info("Wave detected — showing notice.")
+                        self.face.set_notice("👋 User is waving", 2.5)
+                        break
         else:
-            self._hold(RobotState.FACE_DETECTED, 0.6)
+            self._hold(RobotState.FACE_DETECTED, 0.4)
+
+        # Always greet verbally — signals to the person that the robot is ready.
+        self._proactive_greet()
 
     # ========================================================= helpers
 
@@ -480,6 +493,8 @@ class Robot:
             return
 
         while self.player.is_playing() and self.running:
+            if self.feed.has_face:
+                self._last_face_time = time.time()
             self._refresh_preview()
             self._pump()
             self.face.render(RobotState.SPEAKING)
@@ -510,7 +525,9 @@ class Robot:
                     offset = self.tracker.update(
                         self.feed.faces, self.camera.width, self.camera.height)
                     if offset:
-                        self.face.set_gaze(offset[0], offset[1])
+                        # Negate x: camera and display both face the user, so
+                        # left/right from camera's perspective is mirrored on screen.
+                        self.face.set_gaze(-offset[0], offset[1])
                     self._face_gone_since = None
                 else:
                     # Brief grace period (detection flickers), then look ahead.
@@ -530,6 +547,8 @@ class Robot:
 
     def _listen_tick(self, volume, started):
         """Called every audio chunk to keep the UI alive during recording."""
+        if self.feed.has_face:
+            self._last_face_time = time.time()
         self._refresh_preview()
         self.face.set_status(RobotState.LISTENING.status_text)
         self.face.render(RobotState.LISTENING)
