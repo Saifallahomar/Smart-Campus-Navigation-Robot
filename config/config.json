@@ -60,7 +60,9 @@
     "_layout_comment": "Portrait mode for the Pi 7-inch screen in vertical orientation. Set portrait to false for landscape (small thumbnail instead of large preview).",
     "portrait": true,
     "preview_height_frac": 0.45,
-    "face_height_frac": 0.29
+    "face_height_frac": 0.29,
+    "_mirror_comment": "Mirror the live camera preview so it looks like a selfie camera. Set to false for a raw (non-mirrored) view. Detection is never affected.",
+    "mirror_preview": true
   },
 
   "conversation": {

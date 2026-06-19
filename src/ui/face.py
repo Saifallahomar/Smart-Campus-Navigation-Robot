@@ -48,9 +48,10 @@ class Face:
         self.settings = settings
         ui = settings.ui
 
-        self.fps           = int(ui.get("fps", 30))
-        self.show_captions = bool(ui.get("show_captions", True))
-        self.portrait      = bool(ui.get("portrait", False))
+        self.fps            = int(ui.get("fps", 30))
+        self.show_captions  = bool(ui.get("show_captions", True))
+        self.portrait       = bool(ui.get("portrait", False))
+        self.mirror_preview = bool(ui.get("mirror_preview", True))
 
         pygame.display.init()
         pygame.font.init()
@@ -240,6 +241,8 @@ class Face:
         # Scale the camera frame to fill the preview zone
         try:
             scaled = pygame.transform.smoothscale(self._preview, (r.width, r.height))
+            if self.mirror_preview:
+                scaled = pygame.transform.flip(scaled, True, False)
             self.screen.blit(scaled, r.topleft)
         except Exception:
             pygame.draw.rect(self.screen, theme.PANEL, r)
@@ -247,12 +250,14 @@ class Face:
                              r.bottomleft, r.bottomright, 1)
             return
 
-        # Green face-detection boxes
+        # Green face-detection boxes (x-coordinates mirrored to match the flipped preview)
         if self._frame_faces:
             fw, fh = self._frame_size
             sx = r.width  / fw
             sy = r.height / fh
             for (fx, fy, bw, bh) in self._frame_faces:
+                if self.mirror_preview:
+                    fx = fw - (fx + bw)   # mirror: left edge becomes right edge
                 bx = r.x + int(fx * sx)
                 by = r.y + int(fy * sy)
                 try:
@@ -406,17 +411,21 @@ class Face:
         th = int(tw * 0.75)
         try:
             thumb = pygame.transform.smoothscale(self._preview, (tw, th))
+            if self.mirror_preview:
+                thumb = pygame.transform.flip(thumb, True, False)
         except Exception:
             return
         x = self.W - tw - int(self.W * 0.02)
         y = int(self.H * 0.03)
         self.screen.blit(thumb, (x, y))
         pygame.draw.rect(self.screen, theme.PANEL_BORDER, (x, y, tw, th), 2)
-        # Face boxes on thumbnail
+        # Face boxes on thumbnail (x-mirrored when mirror_preview is on)
         if self._frame_faces:
             fw, fh = self._frame_size
             sx, sy = tw / fw, th / fh
             for (fx, fy, bw, bh) in self._frame_faces:
+                if self.mirror_preview:
+                    fx = fw - (fx + bw)
                 pygame.draw.rect(self.screen, theme.PREVIEW_BOX,
                                  (x + int(fx*sx), y + int(fy*sy),
                                   int(bw*sx), int(bh*sy)), 1)

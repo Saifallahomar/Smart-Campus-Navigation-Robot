@@ -77,6 +77,9 @@ DEFAULTS = {
         "portrait": False,
         "preview_height_frac": 0.45,
         "face_height_frac": 0.29,
+        # Mirror the on-screen preview so it looks like a selfie camera.
+        # Detection (face boxes, gaze, wave, vision) still uses the original frame.
+        "mirror_preview": True,
     },
     "conversation": {
         # Seconds a person can be absent before the session ends.
