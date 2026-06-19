@@ -33,6 +33,7 @@ from src.ai.assistant import Assistant
 from src.ai.knowledge import Knowledge
 from src.ai.language import (
     UNSUPPORTED_REPLY,
+    detect_language,
     fallback_phrase,
     is_supported_input,
 )
@@ -62,6 +63,63 @@ GREETING_WORDS = [
     "hello", "hi", "hey", "مرحبا", "السلام", "أهلا",
     "salut", "bonjour", "bonsoir",
 ]
+
+# --- Voice commands for the physical head servo (English + a little AR/FR) ----
+# Centre is checked first so "look forward" never matches left/right.
+# Phrases are kept specific (they mention the head or "look") so normal
+# navigation questions like "where do I turn left?" don't move the servo.
+HEAD_CENTER_PHRASES = [
+    "look forward", "look ahead", "look straight", "look in front",
+    "look center", "look centre", "head center", "head centre",
+    "move your head center", "move your head centre",
+    "center your head", "centre your head", "head forward",
+    "انظر أمامك", "حرك رأسك للأمام", "regarde devant", "tête au centre",
+]
+HEAD_LEFT_PHRASES = [
+    "look left", "head left", "look to your left", "look to the left",
+    "move your head left", "turn your head left",
+    "انظر يسار", "حرك رأسك يسار", "regarde à gauche", "tourne la tête à gauche",
+    "tête à gauche",
+]
+HEAD_RIGHT_PHRASES = [
+    "look right", "head right", "look to your right", "look to the right",
+    "move your head right", "turn your head right",
+    "انظر يمين", "حرك رأسك يمين", "regarde à droite", "tourne la tête à droite",
+    "tête à droite",
+]
+
+# Short spoken acknowledgements for head moves, per language.
+HEAD_ACKS = {
+    "left":   {"english": "Okay, looking left.",
+               "arabic":  "حسنًا، أنظر إلى اليسار.",
+               "french":  "D'accord, je regarde à gauche."},
+    "right":  {"english": "Okay, looking right.",
+               "arabic":  "حسنًا، أنظر إلى اليمين.",
+               "french":  "D'accord, je regarde à droite."},
+    "center": {"english": "Okay, looking forward.",
+               "arabic":  "حسنًا، أنظر إلى الأمام.",
+               "french":  "D'accord, je regarde devant."},
+}
+
+# --- "What can you see?" one-shot camera vision -------------------------------
+VISION_QUERY_PHRASES = [
+    "what can you see", "what do you see", "describe what you can see",
+    "describe what you see", "what's in front of you", "what is in front of you",
+    "describe the scene", "what are you looking at", "can you see anything",
+    "what can you see right now",
+    "ماذا ترى", "ماذا تشاهد", "صف ما تراه",
+    "que vois-tu", "que voyez-vous", "qu'est-ce que tu vois", "décris ce que tu vois",
+]
+CAMERA_UNAVAILABLE = {
+    "english": "Sorry, my camera isn't available right now.",
+    "arabic":  "عذرًا، الكاميرا غير متاحة الآن.",
+    "french":  "Désolé, ma caméra n'est pas disponible pour le moment.",
+}
+VISION_FAILED = {
+    "english": "Sorry, I couldn't make out what I'm seeing right now.",
+    "arabic":  "عذرًا، لم أتمكن من تمييز ما أراه الآن.",
+    "french":  "Désolé, je n'arrive pas à distinguer ce que je vois.",
+}
 
 # How long to hold the ERROR face before returning to idle.
 ERROR_HOLD_SECS = 2.0
@@ -102,12 +160,17 @@ class Robot:
 
         self.messages    = self.knowledge.build_messages()
         self.state       = RobotState.IDLE
+        # track_face now drives the SCREEN EYES only (the physical servo moves
+        # only on a voice command — see _parse_head_command / _handle_head_command).
         self.track_face  = bool(settings.vision.get("track_face", True))
-        # Head-tracking idle handling: when nobody is seen for this long, gently
-        # return the head to the middle and let it rest there.
+        # When nobody is seen for this long, ease the eyes back to centre.
         self._face_gone_since = None
-        self._recenter_delay = float((settings.get("servo") or {}).get(
-            "recenter_delay_seconds", 1.5))
+        servo_cfg = settings.get("servo") or {}
+        self._recenter_delay = float(servo_cfg.get("recenter_delay_seconds", 1.5))
+        # How far "look left"/"look right" turn, as a fraction of full travel.
+        look_deg = float(servo_cfg.get("voice_look_angle_deg", 60))
+        max_deg = float(servo_cfg.get("max_angle", 90)) or 90.0
+        self._voice_look_frac = max(0.0, min(1.0, look_deg / max_deg))
 
         atexit.register(self.cleanup)
         for sig in ("SIGINT", "SIGTERM"):
@@ -236,6 +299,19 @@ class Robot:
                 log.info("User said goodbye.")
                 self._farewell()
                 break
+
+            # Voice command to move the physical head servo (no AI call).
+            head_dir = self._parse_head_command(question)
+            if head_dir:
+                log.info("Head command: %s", head_dir)
+                self._handle_head_command(head_dir, question)
+                continue
+
+            # "What can you see?" → capture ONE frame and describe it (no AI text call).
+            if self._is_vision_query(question):
+                log.info("Vision query.")
+                self._handle_vision_query(question)
+                continue
 
             # Unsupported language / garbled STT output.
             if not is_supported_input(question):
@@ -426,25 +502,31 @@ class Robot:
                 self.feed.frame,
                 faces=self.feed.faces,
                 frame_size=(self.camera.width, self.camera.height))
-            # Continuous head tracking: follow the person through the whole
-            # interaction (waiting, listening, thinking, speaking), not just on
-            # first sight. The head controller smooths the motion itself.
+
+            # Screen EYE gaze follows the person (smoothly). The physical head
+            # servo does NOT auto-follow — it only moves on a voice command.
             if self.track_face:
                 if self.feed.has_face:
                     offset = self.tracker.update(
                         self.feed.faces, self.camera.width, self.camera.height)
                     if offset:
-                        self.head.aim(*offset)
+                        self.face.set_gaze(offset[0], offset[1])
                     self._face_gone_since = None
                 else:
-                    # Nobody in view. Wait a short grace period (face detection
-                    # flickers) then glide the head back to the middle and rest.
+                    # Brief grace period (detection flickers), then look ahead.
                     now = time.time()
                     if self._face_gone_since is None:
                         self._face_gone_since = now
                     elif now - self._face_gone_since > self._recenter_delay:
                         self.tracker.reset()
-                        self.head.center()
+                        self.face.set_gaze(0.0, 0.0)
+
+            # Wave detection → show a clear "User is waving" banner on screen.
+            if (self.wave_detector.enabled and self.feed.has_face
+                    and self.feed.frame is not None):
+                if self.wave_detector.update(self.feed.frame, self.feed.faces):
+                    log.info("Wave detected — showing notice.")
+                    self.face.set_notice("👋 User is waving", 2.5)
 
     def _listen_tick(self, volume, started):
         """Called every audio chunk to keep the UI alive during recording."""
@@ -502,6 +584,64 @@ class Robot:
     def _is_greeting(text):
         t = text.lower()
         return any(w in t for w in GREETING_WORDS)
+
+    # ----------------------------------------------------- head voice commands
+
+    @staticmethod
+    def _parse_head_command(text):
+        """Return 'left' / 'right' / 'center' / None for a head-move command."""
+        t = text.lower()
+        if any(p in t for p in HEAD_CENTER_PHRASES):
+            return "center"
+        if any(p in t for p in HEAD_LEFT_PHRASES):
+            return "left"
+        if any(p in t for p in HEAD_RIGHT_PHRASES):
+            return "right"
+        return None
+
+    def _handle_head_command(self, direction, question):
+        """Move the physical servo to a safe preset and say a short ack."""
+        frac = self._voice_look_frac
+        target = {"left": -frac, "right": frac, "center": 0.0}[direction]
+        self.head.look(target)   # negative = robot's left; flip with servo.invert
+
+        lang = detect_language(question)
+        ack = HEAD_ACKS[direction].get(lang, HEAD_ACKS[direction]["english"])
+        self.face.set_caption(robot=ack)
+        self._speak(ack)
+        self.face.clear_caption()
+        self._render(RobotState.IDLE)
+
+    # ------------------------------------------------------ camera vision query
+
+    @staticmethod
+    def _is_vision_query(text):
+        t = text.lower()
+        return any(p in t for p in VISION_QUERY_PHRASES)
+
+    def _handle_vision_query(self, question):
+        """Capture ONE current frame and speak a short description of it."""
+        lang = detect_language(question)
+
+        if not self.feed.available or self.feed.frame is None:
+            msg = CAMERA_UNAVAILABLE.get(lang, CAMERA_UNAVAILABLE["english"])
+            self.face.set_caption(robot=msg)
+            self._speak(msg)
+            self.face.clear_caption()
+            self._render(RobotState.IDLE)
+            return
+
+        self._render(RobotState.THINKING)
+        frame = self.feed.frame          # single snapshot — no live streaming
+        description = self.assistant.describe_scene(frame, language=lang)
+
+        if not description:
+            description = VISION_FAILED.get(lang, VISION_FAILED["english"])
+
+        self.face.set_caption(robot=description)
+        self._speak(description)
+        self.face.clear_caption()
+        self._render(RobotState.IDLE)
 
     # =========================================================== shutdown
 

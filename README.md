@@ -27,8 +27,14 @@ Built by **Saif Allah Omar** — Mechatronics, UWE Bristol.
 - 👋 **Optional wave detection** (off by default) — greet someone who waves
 - 📝 Logging to `logs/robot.log` for testing
 - 🔌 Safe shutdown button on screen (and Esc on a keyboard)
-- 🧭 **Head tracking with a real servo** — the head smoothly follows the person's
-  face (pan servo on GPIO 18; gentle, speed-limited, goes quiet when settled)
+- 👀 **Eyes that follow you** — the animated eyes track the detected person
+  (left / centre / right) with smooth, natural movement
+- 🗣️ **Voice-controlled head servo** — say "look left", "look right", or
+  "look forward" to turn the physical head (180° pan servo on GPIO 18; smooth,
+  slow, with safe limits). It moves *only* on command, never automatically.
+- 👋 **Waving display** — shows "User is waving" on screen when a wave is detected
+- 🔎 **On-demand camera vision** — ask "what can you see?" and the robot sends a
+  single snapshot to OpenAI and briefly describes the scene (never live video)
 - 🗣️ Optional wake word (off by default)
 
 ---
@@ -105,16 +111,31 @@ Edit **`config/config.json`** — no code changes needed. Key options:
 | `conversation.person_lost_timeout` | Seconds the person can be out of view before the chat ends (default `8`) |
 | `conversation.max_session_seconds` | Optional hard limit on one chat (default `null` = no limit) |
 | `conversation.farewell_message` | What the robot says when the chat ends |
-| `wave_detection.enabled` | Greet someone who waves (default `false`) |
 | `wake_word.enabled` | Turn on the "hey robot" wake word |
-| `servo.enabled` | Turn the head-tracking servo on/off (default `true`) |
+| `servo.enabled` | Turn the head servo on/off (default `true`) |
 | `servo.gpio_pin` | Servo signal pin (default `18` = physical pin 12) |
-| `servo.min_angle` / `servo.max_angle` | Safe left/right sweep range, in degrees |
-| `servo.max_speed_deg_per_sec` | How fast the head turns (smaller = gentler) |
+| `servo.min_angle` / `servo.max_angle` | Full sweep range, in degrees (180° = ±90) |
+| `servo.voice_look_angle_deg` | How far "look left/right" turns (safe limit, default `60`) |
+| `servo.max_speed_deg_per_sec` | How fast the head turns (smaller = slower/gentler) |
 | `servo.invert` | `true` if the head turns the wrong way |
+| `wave_detection.enabled` | Show "User is waving" when a wave is detected |
 | `ui.shutdown_action` | `quit` (stop program) or `poweroff` (shut down the Pi) |
 
 Secrets (API keys) go in **`.env`**, never in `config.json`.
+
+### Voice commands
+
+During a conversation the robot also understands a few special phrases:
+
+| Say | What happens |
+|---|---|
+| "look left" / "move your head left" | Turns the physical head left |
+| "look right" / "move your head right" | Turns the physical head right |
+| "look forward" / "centre your head" | Returns the head to the middle |
+| "what can you see?" / "describe what you see" | Captures one snapshot and describes it |
+
+The head servo moves **only** on these commands — it does not follow you
+automatically. (The on-screen *eyes* do follow you, smoothly.)
 
 ### Languages
 
@@ -152,11 +173,13 @@ commits does **not** remove it from git history, so:
 The structure is ready for the next steps. Placeholder modules already exist so
 you can build these without restructuring anything:
 
-- **Head movement / person following** — implemented for a single pan servo in
-  `src/hardware/servo_head.py` (smooth, speed-limited, auto-quiet when settled).
-  A second servo for tilt can be added the same way. Wiring: servo signal → GPIO 18
-  (physical pin 12), power → 5V (pin 2/4), ground → GND (pin 6). For a high-torque
-  servo use a separate 5V supply and share the ground with the Pi.
+- **Head movement** — implemented for a single pan servo in
+  `src/hardware/servo_head.py` (smooth, speed-limited, auto-quiet when settled),
+  driven by voice commands. A second servo for tilt can be added the same way.
+  Wiring: servo signal → GPIO 18 (physical pin 12), power → external 5V,
+  ground → shared GND. To make the head *auto-follow* instead, call
+  `self.head.look()` from the tracker in `_refresh_preview` (currently the eyes
+  do this on screen).
 - **Campus tour mode** — `src/core/modes/tour_mode.py` (placeholder). Fill in
   `run()` and call it from `robot.py` when a visitor asks for a tour.
 - **Navigation mode** — `src/core/modes/navigation_mode.py` (placeholder). Start

@@ -103,6 +103,18 @@ class Face:
         self._next_blink      = time.time() + random.uniform(2, 5)
         self._blinking_until  = 0.0
 
+        # ----- Eye gaze (where the pupils look) -----------------------------
+        # Target is set from the camera (person position); the drawn value
+        # eases toward it so the eyes glide smoothly instead of snapping.
+        self._gaze_tx = 0.0   # target  -1 (left) .. +1 (right)
+        self._gaze_ty = 0.0   # target  -1 (up)   .. +1 (down)
+        self._gaze_x  = 0.0   # current (smoothed)
+        self._gaze_y  = 0.0
+
+        # ----- Transient on-screen notice (e.g. "User is waving") -----------
+        self._notice       = ""
+        self._notice_until = 0.0
+
         # ----- Camera preview state -----------------------------------------
         self._preview     = None    # latest pygame Surface from camera
         self._frame_faces = []      # latest face boxes [(x,y,w,h) ...]
@@ -127,6 +139,20 @@ class Face:
 
     def set_status(self, text):
         self._status = text or ""
+
+    def set_gaze(self, dx, dy=0.0):
+        """
+        Point the eyes toward a person. dx/dy are -1..+1 offsets from the centre
+        of the camera frame (negative = left/up). Screen eyes only — this never
+        moves the physical head.
+        """
+        self._gaze_tx = max(-1.0, min(1.0, float(dx)))
+        self._gaze_ty = max(-1.0, min(1.0, float(dy)))
+
+    def set_notice(self, text, seconds=2.5):
+        """Show a short banner over the camera preview for a few seconds."""
+        self._notice       = text or ""
+        self._notice_until = time.time() + seconds
 
     def set_preview(self, frame_rgb, faces=None, frame_size=(640, 480)):
         """
@@ -172,10 +198,15 @@ class Face:
         now = time.time()
         sv  = state.value if hasattr(state, "value") else str(state)
 
+        # Ease the eye gaze toward its target so the look is smooth, not jumpy.
+        self._gaze_x += (self._gaze_tx - self._gaze_x) * 0.18
+        self._gaze_y += (self._gaze_ty - self._gaze_y) * 0.18
+
         self.screen.fill(theme.BACKGROUND)
 
         if self.portrait:
             self._draw_preview_zone(sv)
+            self._draw_notice(now)
             self._draw_face_zone(sv, now)
             if self.show_captions:
                 self._draw_caption_zone()
@@ -185,6 +216,7 @@ class Face:
                 self._draw_captions_landscape()
             if self._preview is not None:
                 self._draw_preview_thumbnail()
+            self._draw_notice(now)
 
         self._draw_shutdown_button()
         pygame.display.flip()
@@ -247,6 +279,28 @@ class Face:
         pygame.draw.line(self.screen, theme.PANEL_BORDER,
                          r.bottomleft, r.bottomright, 1)
 
+    def _draw_notice(self, now):
+        """Transient banner near the top of the preview, e.g. 'User is waving'."""
+        if not self._notice or now >= self._notice_until:
+            return
+        # Anchor to the preview zone in portrait, or the top of the screen otherwise.
+        r = self.preview_rect if (self.portrait and self.preview_rect) else \
+            pygame.Rect(0, 0, self.W, int(self.H * 0.12))
+        surf = self.font_overlay.render(self._notice, True, theme.NOTICE_TEXT)
+        sw, sh = surf.get_size()
+        px, py = int(sw * 0.18), int(sh * 0.35)
+        bw, bh = sw + px * 2, sh + py * 2
+        bx = r.x + (r.width - bw) // 2
+        by = r.y + int(r.height * 0.06)
+        try:
+            badge = pygame.Surface((bw, bh), pygame.SRCALPHA)
+            pygame.draw.rect(badge, (*theme.NOTICE_BG, 235), (0, 0, bw, bh),
+                             border_radius=bh // 2)
+            self.screen.blit(badge, (bx, by))
+        except Exception:
+            pygame.draw.rect(self.screen, theme.NOTICE_BG, (bx, by, bw, bh))
+        self.screen.blit(surf, (bx + px, by + py))
+
     def _draw_face_zone(self, state_value, now):
         """Middle zone: the animated robot face + status badge."""
         r = self.face_rect
@@ -271,8 +325,11 @@ class Face:
         eye_ry = int(r.height * 0.20)
         gap    = int(self.W * 0.185)     # half-distance between eye centres
 
-        self._draw_eye(cx - gap, eye_y, eye_rx, eye_ry, color, openness, state_value)
-        self._draw_eye(cx + gap, eye_y, eye_rx, eye_ry, color, openness, state_value)
+        gox = int(self._gaze_x * eye_rx * 0.42)   # pupil shift left/right
+        goy = int(self._gaze_y * eye_ry * 0.42)   # pupil shift up/down
+
+        self._draw_eye(cx - gap, eye_y, eye_rx, eye_ry, color, openness, state_value, gox, goy)
+        self._draw_eye(cx + gap, eye_y, eye_rx, eye_ry, color, openness, state_value, gox, goy)
 
         # Listening pulse ring
         if state_value == "listening":
@@ -317,8 +374,11 @@ class Face:
         eye_ry = int(r.height * 0.12)
         gap    = int(self.W * 0.20)
 
-        self._draw_eye(cx - gap, eye_y, eye_rx, eye_ry, color, openness, state_value)
-        self._draw_eye(cx + gap, eye_y, eye_rx, eye_ry, color, openness, state_value)
+        gox = int(self._gaze_x * eye_rx * 0.42)
+        goy = int(self._gaze_y * eye_ry * 0.42)
+
+        self._draw_eye(cx - gap, eye_y, eye_rx, eye_ry, color, openness, state_value, gox, goy)
+        self._draw_eye(cx + gap, eye_y, eye_rx, eye_ry, color, openness, state_value, gox, goy)
 
         mouth_y = r.top + int(r.height * 0.66) + int(bob)
         self._draw_mouth(state_value, cx, mouth_y, eye_rx, int(r.height * 0.12), now)
@@ -379,7 +439,7 @@ class Face:
             return 1.0 - (elapsed / half) if elapsed < half else (elapsed - half) / half
         return 1.0
 
-    def _draw_eye(self, cx, cy, rx, ry, color, openness, state_value):
+    def _draw_eye(self, cx, cy, rx, ry, color, openness, state_value, gx=0, gy=0):
         cx, cy, rx = int(cx), int(cy), int(rx)
 
         # ERROR state: X-shaped eyes
@@ -397,10 +457,14 @@ class Face:
                              max(4, int(ry * 0.25)))
             return
 
-        # HAPPY: squinted (reduced ry)
+        # HAPPY: squinted, cute upward arc (no pupil) ^_^
         if state_value == "happy":
-            ry = max(3, int(ry * 0.55))
+            arc_ry = max(6, int(ry * 0.85))
+            rect = pygame.Rect(cx - rx, cy - arc_ry, rx * 2, arc_ry * 2)
+            pygame.draw.arc(self.screen, color, rect, 0.30, 2.84, max(5, int(ry * 0.30)))
+            return
 
+        # Normal open eye — big rounded eye with a pupil that follows the person.
         ry_eff = max(3, int(ry * openness))
         if _HAS_GFX:
             gfxdraw.filled_ellipse(self.screen, cx, cy, rx, ry_eff, color)
@@ -409,15 +473,29 @@ class Face:
             pygame.draw.ellipse(self.screen, color,
                                 (cx - rx, cy - ry_eff, rx * 2, ry_eff * 2))
 
-        # Eye glint — small bright dot for a friendly look
-        gx = int(cx - rx * 0.30)
-        gy = int(cy - ry_eff * 0.38)
-        gr = max(2, int(rx * 0.18))
+        # Pupil — dark circle offset by the gaze, clamped to stay inside the eye.
+        pr = max(3, int(rx * 0.46))
+        max_ox = max(0, rx - pr - int(rx * 0.10))
+        max_oy = max(0, ry_eff - pr - int(ry_eff * 0.10))
+        px = cx + max(-max_ox, min(max_ox, int(gx)))
+        py = cy + max(-max_oy, min(max_oy, int(gy)))
+        # When the eye is mid-blink the pupil would overflow — shrink it to fit.
+        pr = min(pr, max(2, ry_eff - 1))
         if _HAS_GFX:
-            gfxdraw.filled_circle(self.screen, gx, gy, gr, theme.HIGHLIGHT)
-            gfxdraw.aacircle(    self.screen, gx, gy, gr, theme.HIGHLIGHT)
+            gfxdraw.filled_circle(self.screen, px, py, pr, theme.PUPIL)
+            gfxdraw.aacircle(    self.screen, px, py, pr, theme.PUPIL)
         else:
-            pygame.draw.circle(self.screen, theme.HIGHLIGHT, (gx, gy), gr)
+            pygame.draw.circle(self.screen, theme.PUPIL, (px, py), pr)
+
+        # Bright glint on the pupil for a lively, cute look.
+        gr = max(2, int(pr * 0.42))
+        gxx = px - int(pr * 0.32)
+        gyy = py - int(pr * 0.34)
+        if _HAS_GFX:
+            gfxdraw.filled_circle(self.screen, gxx, gyy, gr, theme.HIGHLIGHT)
+            gfxdraw.aacircle(    self.screen, gxx, gyy, gr, theme.HIGHLIGHT)
+        else:
+            pygame.draw.circle(self.screen, theme.HIGHLIGHT, (gxx, gyy), gr)
 
     def _draw_mouth(self, state_value, cx, my, rx, ry, now):
         cx, my = int(cx), int(my)

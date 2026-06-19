@@ -129,6 +129,71 @@ class Assistant:
 
         return self._retry(call, "Chat")
 
+    def describe_scene(self, frame_rgb, language: str = "english"):
+        """
+        Send ONE camera frame to the (multimodal) chat model and return a short
+        spoken description, or None on failure.
+
+        Only called on demand (when the user asks "what can you see?"). Never
+        sends live video. Uses the same OpenAI key/model already configured.
+        """
+        if not self.ready:
+            return None
+        if frame_rgb is None:
+            return None
+
+        data_url = self._encode_jpeg(frame_rgb)
+        if data_url is None:
+            return None
+
+        lang_name = {"english": "English", "arabic": "Arabic",
+                     "french": "French"}.get(language, "English")
+
+        def call():
+            completion = self.client.chat.completions.create(
+                model=self.chat_model,
+                max_tokens=120,
+                messages=[
+                    {"role": "system", "content": (
+                        "You are the eyes of a friendly campus robot. Look at the "
+                        "image and say briefly what you see in 1-2 short, natural "
+                        f"sentences, in {lang_name}. Be warm and concise. Do not "
+                        "mention that it is an image or photo.")},
+                    {"role": "user", "content": [
+                        {"type": "text", "text": "What can you see right now?"},
+                        {"type": "image_url", "image_url": {"url": data_url}},
+                    ]},
+                ],
+            )
+            return completion.choices[0].message.content.strip()
+
+        return self._retry(call, "Vision")
+
+    @staticmethod
+    def _encode_jpeg(frame_rgb):
+        """Encode an RGB numpy frame to a base64 JPEG data URL (cv2 or PIL)."""
+        import base64
+        data = None
+        try:
+            import cv2
+            bgr = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
+            ok, buf = cv2.imencode(".jpg", bgr, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            if ok:
+                data = buf.tobytes()
+        except Exception:
+            data = None
+        if data is None:
+            try:
+                import io
+                from PIL import Image
+                bio = io.BytesIO()
+                Image.fromarray(frame_rgb).save(bio, format="JPEG", quality=80)
+                data = bio.getvalue()
+            except Exception as exc:
+                log.error("Could not encode camera frame for vision: %s", exc)
+                return None
+        return "data:image/jpeg;base64," + base64.b64encode(data).decode("ascii")
+
     def synthesize(self, text: str, out_path: str = "answer.wav"):
         """
         Text-to-speech. Streams audio to ``out_path`` and returns the path,

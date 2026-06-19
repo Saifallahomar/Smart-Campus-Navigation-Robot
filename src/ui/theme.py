@@ -15,10 +15,13 @@ TEXT_SECONDARY= (150, 165, 200)     # user speech / labels
 STATUS_TEXT   = (255, 255, 255)     # status badge text (always white)
 MOUTH         = (240, 245, 255)
 HIGHLIGHT     = (255, 255, 255)     # eye glint dot
+PUPIL         = (12,  16,  30)      # dark pupil inside the eye (gaze direction)
 SHUTDOWN      = (230, 80,  90)      # power button ring
 SHUTDOWN_DIM  = (100, 36,  42)      # power button fill
 PREVIEW_BOX   = (60,  230, 130)     # face detection rectangle (green)
 PREVIEW_NONE  = (140, 155, 180)     # "looking for you" text colour
+NOTICE_BG     = (40,  120, 200)     # banner background (e.g. "User is waving")
+NOTICE_TEXT   = (255, 255, 255)     # banner text
 
 # --- Per-emotion eye colour -------------------------------------------------
 # Each state gets its own colour so the mood is readable at a glance.

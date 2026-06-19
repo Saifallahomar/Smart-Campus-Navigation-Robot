@@ -37,6 +37,16 @@ class HeadController:
         self.tilt = 0.0
         self._apply(0.0, 0.0)
 
+    def look(self, pan, tilt=0.0):
+        """
+        Move to an ABSOLUTE pan target (-1 = left .. 0 = centre .. +1 = right).
+        Used by voice commands ("look left", "look forward", ...). A servo
+        subclass eases there smoothly; the base controller just records it.
+        """
+        self.pan = max(-1.0, min(1.0, float(pan)))
+        self.tilt = max(-1.0, min(1.0, float(tilt)))
+        self._apply(self.pan, self.tilt)
+
     def _apply(self, pan, tilt):
         """No-op placeholder. Override in a servo subclass."""
         now = time.time()

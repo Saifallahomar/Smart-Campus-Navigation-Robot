@@ -64,10 +64,10 @@ class ServoHead(HeadController):
         self.min_angle  = float(cfg.get("min_angle", -90.0))
         self.max_angle  = float(cfg.get("max_angle", 90.0))
         self.center_ang = float(cfg.get("center_angle", 0.0))
-        self.max_speed  = float(cfg.get("max_speed_deg_per_sec", 90.0))
+        self.max_speed  = float(cfg.get("max_speed_deg_per_sec", 60.0))
         # Fraction of the remaining distance covered each tick (ease-out). Lower
         # = smoother and gentler; higher = snappier.
-        self.smoothing  = float(cfg.get("smoothing", 0.18))
+        self.smoothing  = float(cfg.get("smoothing", 0.12))
         # deadzone: how close counts as "arrived" (then it stops).
         # wake_zone: how big a change must be to start moving again. wake_zone
         # being larger than deadzone gives hysteresis, so small camera wobble

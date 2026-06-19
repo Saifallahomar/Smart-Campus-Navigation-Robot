@@ -87,8 +87,8 @@ DEFAULTS = {
         "farewell_message": "Bye! Have a great day!",
     },
     "wave_detection": {
-        # Lightweight frame-differencing wave detector (disabled by default).
-        "enabled": False,
+        # Lightweight frame-differencing wave detector. Shows "User is waving".
+        "enabled": True,
         # Pixel difference needed to count as motion (0-255, higher = less sensitive).
         "motion_threshold": 30,
         # How many consecutive motion frames before a wave is confirmed.
@@ -105,10 +105,12 @@ DEFAULTS = {
         "min_angle": -90,
         "max_angle": 90,
         "center_angle": 0,
+        # How far "look left"/"look right" turn from centre (safe limit).
+        "voice_look_angle_deg": 60,
         # Fraction of remaining distance moved per tick (lower = gentler glide).
-        "smoothing": 0.18,
-        # How fast the head may turn (smaller = gentler).
-        "max_speed_deg_per_sec": 90,
+        "smoothing": 0.12,
+        # How fast the head may turn (smaller = slower/gentler).
+        "max_speed_deg_per_sec": 60,
         # How close counts as "arrived" (then it stops).
         "deadzone_deg": 2.0,
         # How big a change must be to start moving again (> deadzone = no twitch).
