@@ -31,6 +31,7 @@ import time
 from config.settings import settings
 from src.ai.assistant import Assistant
 from src.ai.knowledge import Knowledge
+from src.ai.question_logger import QuestionLogger
 from src.ai.language import (
     UNSUPPORTED_REPLY,
     detect_language,
@@ -168,6 +169,7 @@ class Robot:
             cooldown=float(wave_cfg.get('cooldown_seconds', 3.0)),
         )
 
+        self.q_logger    = QuestionLogger(settings)
         self.messages    = self.knowledge.build_messages()
         self.state       = RobotState.IDLE
         # track_face now drives the SCREEN EYES only (the physical servo moves
@@ -335,6 +337,9 @@ class Robot:
 
             # Normal Q&A turn.
             answer, is_fallback = self._get_answer(question)
+            # Optional text-only log (no audio, images, or personal data).
+            self.q_logger.record(detect_language(question), question, answer,
+                                 unsure=is_fallback)
             self.face.set_caption(robot=answer)
             self._speak(answer)
             self._post_expression(question, is_fallback)

@@ -30,7 +30,15 @@
     "min_face_size": 60,
     "show_preview": true,
     "track_face": true,
-    "feed_fps": 15
+    "feed_fps": 15,
+
+    "_camera_controls_comment": "Optional Picamera2 quality controls applied after the camera starts. Safe to remove or adjust. AWB modes: 0=Auto 1=Incandescent 2=Tungsten 3=Fluorescent 4=Indoor 5=Daylight 6=Cloudy. Brightness: -1.0 to +1.0 (default 0.0). Contrast/Saturation/Sharpness: 0.0 to 32.0 (default 1.0). Remove this block entirely to use camera defaults.",
+    "camera_controls": {
+      "AwbMode": 4,
+      "Brightness": 0.05,
+      "Contrast": 1.1,
+      "Saturation": 1.15
+    }
   },
 
   "ai": {
@@ -80,6 +88,11 @@
     "motion_threshold": 30,
     "min_motion_frames": 8,
     "cooldown_seconds": 3.0
+  },
+
+  "question_logging": {
+    "_comment": "Optional text-only log of questions and answers for improving the robot. Logs to logs/questions.csv. Never logs audio, images, faces, or personal data.",
+    "enabled": false
   },
 
   "servo": {

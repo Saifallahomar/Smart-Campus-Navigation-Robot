@@ -1,0 +1,102 @@
+{
+  "_about": "Campus navigation hints for the Smart Campus Robot. The robot is located in Z Block (Engineering Department), Frenchay Campus. These are block-level hints only — exact walking routes are NOT listed because they depend on entry points and current campus layout. Always point students to the campus map (uwe.ac.uk/map) or the Information Point for precise directions. NEVER invent distances, turn-by-turn instructions, or room numbers not listed here.",
+
+  "robot_location": "Z Block, Frenchay Campus, UWE Bristol (Engineering Department)",
+  "campus_map_url": "uwe.ac.uk/map",
+  "info_point": "D Block, Room 1D11 — the Information Point staff can give you directions to anywhere on campus",
+  "general_hint": "Campus signage with block letters is posted throughout the campus. Follow the signs for the block letter you need. If you are not sure, ask any member of staff or contact the Information Point in D Block.",
+
+  "destinations": [
+    {
+      "name": "Library",
+      "aliases": ["library", "d block library", "frenchay library"],
+      "block": "D Block",
+      "hint": "From Z Block Engineering, head toward the central campus area and look for D Block signage. The Frenchay Library is in D Block and is open 24 hours a day, 7 days a week.",
+      "tip": "You need your UWE student ID card to enter. The campus map at uwe.ac.uk/map shows the exact route."
+    },
+    {
+      "name": "Student Services / InfoHub / Information Point",
+      "aliases": ["infohub", "information point", "student services", "info point"],
+      "block": "D Block, Room 1D11",
+      "hint": "From Z Block, head toward D Block — the same building as the library. The Information Point (InfoHub) is in Room 1D11 on the ground floor.",
+      "tip": "Phone: +44 (0)117 32 85678. They can help with most campus queries."
+    },
+    {
+      "name": "Canteen / Onezone / Food",
+      "aliases": ["canteen", "onezone", "food", "cafeteria", "starbucks", "lunch"],
+      "block": "E Block",
+      "hint": "From Z Block, follow the campus signs toward E Block. The main cafeteria (Onezone) is there along with a Starbucks and other food options.",
+      "tip": "The campus is cashless — bring your card. Open Monday to Friday during term time."
+    },
+    {
+      "name": "Students' Union / SU",
+      "aliases": ["students union", "su", "union", "union bar"],
+      "block": "U Block",
+      "hint": "From Z Block, follow campus signs toward U Block for the Students' Union. It has a shop, Union 2 Bar, and the SU Advice Centre.",
+      "tip": "Phone: +44 (0)117 32 82577. Free advice from the SU Advice Centre: +44 (0)117 32 82676."
+    },
+    {
+      "name": "Bristol Robotics Laboratory / BRL",
+      "aliases": ["robotics", "brl", "bristol robotics", "t block"],
+      "block": "T Block",
+      "hint": "The Bristol Robotics Laboratory is in T Block. As T Block and Z Block are both in the engineering and sciences area of campus, look for T Block signage nearby.",
+      "tip": "A joint research centre between UWE and the University of Bristol. Website: brl.ac.uk"
+    },
+    {
+      "name": "Health Centre / GP / Doctor",
+      "aliases": ["health centre", "doctor", "gp", "medical", "nurse"],
+      "block": "N Block, Level 2, Room 2N009",
+      "hint": "From Z Block, follow campus signs toward N Block. The University Health Centre is on Level 2, Room 2N009.",
+      "tip": "Phone: +44 (0)117 328 6666. It is an NHS GP practice — register early in the academic year."
+    },
+    {
+      "name": "Accommodation Services",
+      "aliases": ["accommodation", "housing", "halls", "rooms"],
+      "block": "N Block, Level 2, Room 2N02",
+      "hint": "From Z Block, follow campus signs toward N Block. Accommodation Services is on Level 2, Room 2N02.",
+      "tip": "Phone: +44 (0)117 32 83601. Email: accommodation@uwe.ac.uk"
+    },
+    {
+      "name": "International Support / Global Lounge",
+      "aliases": ["international", "global lounge", "visa", "immigration", "p block"],
+      "block": "P Block, Room 2P4",
+      "hint": "From Z Block, follow campus signs toward P Block for the Global Lounge and international student support.",
+      "tip": "Drop-in hours: Mon/Wed 13:30-14:45, Tue/Thu 10:00-12:00. Email: immigrationadvice@uwe.ac.uk"
+    },
+    {
+      "name": "Engineering / Z Block (here)",
+      "aliases": ["z block", "engineering", "mechatronics", "workshops", "labs"],
+      "block": "Z Block (current location)",
+      "hint": "You are already in Z Block! Engineering, Mathematics, and Computing teaching labs, workshops, and the mechatronics project space are all here.",
+      "tip": "Technicians and demonstrators are available during scheduled lab sessions."
+    },
+    {
+      "name": "Main Entrance / Reception",
+      "aliases": ["entrance", "reception", "a block", "main entrance", "front"],
+      "block": "A Block",
+      "hint": "From Z Block, follow the main campus path toward A Block for the main campus entrance and central reception.",
+      "tip": "A free campus map is available from the Information Point in D Block or at uwe.ac.uk/map."
+    },
+    {
+      "name": "Wellbeing / Counselling",
+      "aliases": ["wellbeing", "counselling", "mental health", "support"],
+      "block": "Contact via InfoHub in D Block",
+      "hint": "For wellbeing and counselling support, contact UWE Wellbeing Services. Phone: +44 (0)117 32 86268, Monday to Friday 08:30-16:30. For 24/7 support call the free SAP helpline: +44 (0)800 028 3766.",
+      "tip": "From Z Block, head to D Block InfoHub (Room 1D11) and they will direct you to the right service."
+    },
+    {
+      "name": "Car Park / Parking",
+      "aliases": ["car park", "parking", "car"],
+      "block": "Campus perimeter",
+      "hint": "Car parking is around the campus perimeter. A valid permit is required. Check the campus map at uwe.ac.uk/map for the nearest car park to Z Block.",
+      "tip": "Apply for a permit at uwe.ac.uk/parking."
+    },
+    {
+      "name": "Bus Stop",
+      "aliases": ["bus", "bus stop", "transport", "metrobus", "m1"],
+      "block": "Main campus entrance / Coldharbour Lane",
+      "hint": "From Z Block, follow campus signs toward the main entrance on Coldharbour Lane. Bus stops are near the campus entrance on Coldharbour Lane. The M1 MetroBus and First Bus routes serve the campus.",
+      "tip": "UWE students can get discounted bus passes at uwe.ac.uk/travel."
+    }
+  ]
+}

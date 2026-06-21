@@ -56,6 +56,12 @@ class Camera:
             log.warning("picamera2 / OpenCV not available - running without camera.")
             return
 
+        # Optional quality controls (e.g. AwbMode, Brightness) — applied after start().
+        # Strip _comment keys so JSON comment fields are ignored safely.
+        raw_controls = v.get("camera_controls") or {}
+        self._cam_controls = {k: val for k, val in raw_controls.items()
+                              if not k.startswith("_")}
+
         try:
             self._picam = Picamera2()
             self._picam.preview_configuration.main.size   = (self.width, self.height)
@@ -79,6 +85,15 @@ class Camera:
             except Exception as exc:
                 log.error("Camera start failed: %s", exc)
                 self.available = False
+                return
+            # Apply optional quality controls (AWB mode, brightness, etc.).
+            # Wrapped separately so a control failure never disables the camera.
+            if self._cam_controls:
+                try:
+                    self._picam.set_controls(self._cam_controls)
+                    log.info("Camera controls applied: %s", self._cam_controls)
+                except Exception as exc:
+                    log.warning("Camera controls not applied (%s) — continuing.", exc)
 
     def capture_frame(self):
         """Return an RGB frame (numpy array) or None."""

@@ -89,6 +89,10 @@ DEFAULTS = {
         # What the robot says at the end of a session.
         "farewell_message": "Bye! Have a great day!",
     },
+    "question_logging": {
+        # Optional CSV log of questions and answers. Text only — no audio or images.
+        "enabled": False,
+    },
     "wave_detection": {
         # Lightweight frame-differencing wave detector. Shows "User is waving".
         "enabled": True,

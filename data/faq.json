@@ -20,7 +20,7 @@
     },
     {
       "patterns": ["what", "are", "you"],
-      "answer": "I am the Smart Campus Guide Robot at UWE Bristol. I can help you find buildings, answer student questions, and guide you around Frenchay Campus. I speak English, Arabic, and French."
+      "answer": "I am the Smart Campus Guide Robot at UWE Bristol. I can help you find buildings, answer student questions, and guide you around Frenchay Campus. I speak English, Arabic, French, and Chinese."
     },
     {
       "patterns": ["open", "day"],
