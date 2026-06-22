@@ -103,33 +103,62 @@ HEAD_ACKS = {
 }
 
 # --- "What can you see?" one-shot camera vision -------------------------------
+#
+# Phrases are checked as substrings of the lowercased question.  A match means
+# the robot captures ONE frame and sends it to OpenAI vision.  No live video.
+#
+# Adding a phrase here is the only change needed to support a new trigger.
 VISION_QUERY_PHRASES = [
-    # what do/can you see
+    # ── general sight queries ──────────────────────────────────────────────
     "what can you see", "what do you see", "what are you seeing",
     "describe what you can see", "describe what you see", "describe the scene",
     "what's in front of you", "what is in front of you",
+    "what's in front of me",  "what is in front of me",
     "what can you see right now", "what do you see right now",
     "what are you looking at", "can you see anything",
-    # can/do you see me / people
+    # ── can/do you see me ─────────────────────────────────────────────────
     "can you see me", "do you see me", "can you see us",
     "are you looking at me", "do you see anyone",
     "am i in front of you", "am i visible to you",
     "is anyone in front of you", "is there anyone in front of you",
-    # Arabic
+    # ── object identification ("this" implies something physically present) ─
+    "what is this", "what's this",
+    "what am i holding",
+    "can you identify this", "identify this",
+    "describe this",
+    # ── colour / appearance ────────────────────────────────────────────────
+    "what colour is this", "what color is this",
+    "what colour is that", "what color is that",
+    # ── engineering / electronics part identification ──────────────────────
+    "what type of sensor", "what type of motor",
+    "what type of component", "what type of part",
+    "what type of device", "what type of board",
+    # ── yes/no object check: "is this a …" / "is this an …" ──────────────
+    "is this a", "is this an",
+    # ── Arabic ────────────────────────────────────────────────────────────
     "ماذا ترى", "ماذا تشاهد", "صف ما تراه", "هل تراني",
-    # French
+    "ما هذا", "ما لون هذا", "ما نوع هذا",
+    "هل يمكنك التعرف على هذا",
+    # ── French ────────────────────────────────────────────────────────────
     "que vois-tu", "que voyez-vous", "qu'est-ce que tu vois",
     "décris ce que tu vois", "est-ce que tu me vois",
+    "qu'est-ce que c'est", "quelle couleur",
+    "quel type de capteur", "quel type de moteur",
+    # ── Chinese (Mandarin) ────────────────────────────────────────────────
+    "你能看到什么", "你看到了什么", "这是什么", "描述你看到的",
+    "这是什么颜色", "这是什么类型",
 ]
 CAMERA_UNAVAILABLE = {
     "english": "Sorry, my camera isn't available right now.",
     "arabic":  "عذرًا، الكاميرا غير متاحة الآن.",
     "french":  "Désolé, ma caméra n'est pas disponible pour le moment.",
+    "chinese": "抱歉，我的摄像头现在不可用。",
 }
 VISION_FAILED = {
     "english": "Sorry, I couldn't make out what I'm seeing right now.",
     "arabic":  "عذرًا، لم أتمكن من تمييز ما أراه الآن.",
     "french":  "Désolé, je n'arrive pas à distinguer ce que je vois.",
+    "chinese": "抱歉，我现在看不清楚。",
 }
 
 # How long to hold the ERROR face before returning to idle.
@@ -701,7 +730,8 @@ class Robot:
 
         self._render(RobotState.THINKING)
         frame = self.feed.frame          # single snapshot — no live streaming
-        description = self.assistant.describe_scene(frame, language=lang)
+        description = self.assistant.describe_scene(frame, language=lang,
+                                                    question=question)
 
         if not description:
             description = VISION_FAILED.get(lang, VISION_FAILED["english"])

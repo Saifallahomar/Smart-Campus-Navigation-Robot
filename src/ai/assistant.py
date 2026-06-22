@@ -129,13 +129,16 @@ class Assistant:
 
         return self._retry(call, "Chat")
 
-    def describe_scene(self, frame_rgb, language: str = "english"):
+    def describe_scene(self, frame_rgb, language: str = "english",
+                       question: str = ""):
         """
-        Send ONE camera frame to the (multimodal) chat model and return a short
-        spoken description, or None on failure.
+        Send ONE camera frame to the multimodal model and return a spoken
+        answer to ``question``, or None on failure.
 
-        Only called on demand (when the user asks "what can you see?"). Never
-        sends live video. Uses the same OpenAI key/model already configured.
+        Only called on demand — never sends live video or constant frames.
+        The user's actual question is forwarded so the model answers it
+        directly ("what type of motor is this?" gets a motor answer, not a
+        generic scene description).
         """
         if not self.ready:
             return None
@@ -146,21 +149,41 @@ class Assistant:
         if data_url is None:
             return None
 
-        lang_name = {"english": "English", "arabic": "Arabic",
-                     "french": "French"}.get(language, "English")
+        lang_name = {
+            "english": "English",
+            "arabic":  "Arabic",
+            "french":  "French",
+            "chinese": "Chinese (Mandarin)",
+        }.get(language, "English")
+
+        system_prompt = (
+            f"You are the vision system of a friendly campus guide robot at UWE Bristol. "
+            f"You receive one camera frame and the user's question. "
+            f"Answer in {lang_name} in 1-3 natural spoken sentences. "
+            "Rules you must follow:\n"
+            "1. If you are not fully certain what something is, say "
+            "'I’m not fully sure, but it looks like…' before your answer.\n"
+            "2. For electronics or engineering parts (motors, sensors, batteries, "
+            "wires, circuit boards, chips, drivers, servos): give a short, "
+            "beginner-friendly description. Do NOT state the exact model number or "
+            "brand unless text printed on the item clearly shows it.\n"
+            "3. If the image is too dark, blurry, or the object is too small to "
+            "identify confidently, say: 'I can’t quite make it out — "
+            "could you hold it a bit closer or from a different angle?'\n"
+            "4. Never mention that you are looking at a photo or image. "
+            "Speak naturally as if you can see the person and what they are showing you."
+        )
+
+        user_text = question.strip() if question.strip() else "What can you see?"
 
         def call():
             completion = self.client.chat.completions.create(
                 model=self.chat_model,
-                max_tokens=120,
+                max_tokens=180,
                 messages=[
-                    {"role": "system", "content": (
-                        "You are the eyes of a friendly campus robot. Look at the "
-                        "image and say briefly what you see in 1-2 short, natural "
-                        f"sentences, in {lang_name}. Be warm and concise. Do not "
-                        "mention that it is an image or photo.")},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": [
-                        {"type": "text", "text": "What can you see right now?"},
+                        {"type": "text",      "text": user_text},
                         {"type": "image_url", "image_url": {"url": data_url}},
                     ]},
                 ],
