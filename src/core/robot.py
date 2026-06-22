@@ -135,6 +135,9 @@ VISION_FAILED = {
 # How long to hold the ERROR face before returning to idle.
 ERROR_HOLD_SECS = 2.0
 
+# Max number of extra recording attempts when no audio is captured (mic hiccup).
+_MAX_LISTEN_RETRIES = 2
+
 
 class Robot:
     def __init__(self):
@@ -183,6 +186,10 @@ class Robot:
         look_deg = float(servo_cfg.get("voice_look_angle_deg", 60))
         max_deg = float(servo_cfg.get("max_angle", 90)) or 90.0
         self._voice_look_frac = max(0.0, min(1.0, look_deg / max_deg))
+
+        # Cached here so _listen_tick() can stop the recorder when person leaves.
+        conv_cfg = settings.get('conversation') or {}
+        self._lost_timeout = float(conv_cfg.get('person_lost_timeout', 8.0))
 
         atexit.register(self.cleanup)
         for sig in ("SIGINT", "SIGTERM"):
@@ -281,7 +288,7 @@ class Robot:
             # End session if person has been gone too long.
             absent = time.time() - self._last_face_time
             if absent > lost_timeout:
-                log.info("Person absent %.1fs — ending session.", absent)
+                log.info("Person absent %.1fs — returning to idle.", absent)
                 break
 
             # Optional hard session time limit.
@@ -366,7 +373,7 @@ class Robot:
 
             if self.feed.has_face:
                 # _refresh_preview() above already drives head tracking.
-                log.info("Face detected.")
+                log.info("Person detected — starting session.")
                 self._greet_on_face_detect()
                 return True
         return False
@@ -426,34 +433,57 @@ class Robot:
         return not self.running  # True = stop waiting
 
     def _listen_and_transcribe(self):
-        """Record the user, transcribe, and return text — or None on failure."""
+        """
+        Record the user, transcribe, and return text — or None.
+
+        Retries up to _MAX_LISTEN_RETRIES times when the recorder returns
+        nothing but the person is still present (transient mic failure).
+        Returns None immediately when the person is gone or the robot stops.
+        """
         self.face.clear_caption()
-        log.info("Listening...")
 
-        audio_file = self.recorder.record_until_silence(
-            self.voice_path, on_tick=self._listen_tick)
-        if audio_file is None:
-            return None
+        for attempt in range(1 + _MAX_LISTEN_RETRIES):
+            if attempt == 0:
+                log.info("Starting listening...")
+            else:
+                log.info("No speech detected, retrying (%d/%d)...",
+                         attempt, _MAX_LISTEN_RETRIES)
 
-        self._render(RobotState.THINKING)
-        log.info("Transcribing...")
-        question = self.assistant.transcribe(audio_file)
+            audio_file = self.recorder.record_until_silence(
+                self.voice_path, on_tick=self._listen_tick)
 
-        if not question:
-            # Unclear speech or failed transcription — say a friendly line in
-            # English (we have no reliable text to detect a language from) and
-            # invite the person to try again, instead of silently moving on.
-            log.info("Empty or failed transcript — asking the user to repeat.")
-            self._hold(RobotState.CONFUSED, 0.6)
-            line = fallback_phrase("didnt_catch", "english")
-            self.face.set_caption(robot=line)
-            self._speak(line)
-            self.face.clear_caption()
-            return None
+            if audio_file is None:
+                if not self.running:
+                    return None
+                # _listen_tick stops the recorder when the person leaves.
+                absent = time.time() - self._last_face_time
+                if absent > self._lost_timeout * 0.5:
+                    log.info("Person lost during listening — returning to idle.")
+                    return None
+                # Person still present — possible transient mic hiccup; retry.
+                if attempt < _MAX_LISTEN_RETRIES and self.feed.has_face:
+                    continue
+                return None
 
-        log.info("You said: %s", question)
-        self.face.set_caption(user=question)
-        return question
+            self._render(RobotState.THINKING)
+            log.info("Transcribing...")
+            question = self.assistant.transcribe(audio_file)
+
+            if not question:
+                log.info("Empty or failed transcript — asking the user to repeat.")
+                self._hold(RobotState.CONFUSED, 0.6)
+                line = fallback_phrase("didnt_catch", "english")
+                self.face.set_caption(robot=line)
+                self._speak(line)
+                self.face.clear_caption()
+                return None
+
+            log.info("You said: %s", question)
+            self.face.set_caption(user=question)
+            return question
+
+        log.info("No speech after all retries — returning to idle.")
+        return None
 
     def _get_answer(self, question):
         """Return (answer_text, is_fallback). Never raises."""
@@ -506,6 +536,11 @@ class Robot:
 
         if not self.running:
             self.player.stop()
+            return
+
+        # Brief pause after audio ends: lets speaker echo die out so it is not
+        # picked up as the start of the next recording.
+        self._hold(RobotState.SPEAKING, 0.35)
 
     def _post_expression(self, question, is_fallback):
         if is_fallback:
@@ -558,7 +593,14 @@ class Robot:
         self.face.set_status(RobotState.LISTENING.status_text)
         self.face.render(RobotState.LISTENING)
         self._pump()
-        return not self.running   # True stops the recording
+        if not self.running:
+            return True
+        # Stop the recorder early when the person has walked away, so the robot
+        # doesn't stay stuck in LISTENING state after the visitor leaves.
+        if time.time() - self._last_face_time > self._lost_timeout:
+            log.info("Person left during listening — stopping recorder.")
+            return True
+        return False
 
     def _render(self, state):
         self.state = state
@@ -573,6 +615,8 @@ class Robot:
         self.face.set_status(state.status_text)
         end = time.time() + seconds
         while time.time() < end and self.running:
+            if self.feed.has_face:
+                self._last_face_time = time.time()
             self._refresh_preview()
             self.face.render(state)
             self._pump()
