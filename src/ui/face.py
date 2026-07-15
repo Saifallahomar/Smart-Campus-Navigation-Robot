@@ -1,28 +1,28 @@
 """
-The robot's animated face (pygame) — portrait layout for the 7-inch Pi screen.
+The robot's animated face (pygame) for the 7-inch Pi touchscreen.
 
-Portrait layout (480 × 800):
+The layout is chosen from the actual screen resolution, not just config:
+
+Portrait (H > W, e.g. 480 × 800):
   ┌────────────────────┐  y = 0
-  │                    │
-  │  CAMERA PREVIEW    │  full-width live view with green face boxes
-  │  480 × ~360 px     │  "Looking for you..." when no face detected
-  │                    │
-  ├────────────────────┤  y ≈ 360  (config: ui.preview_height_frac)
-  │  [status badge]    │
-  │  👀  eyes  👀     │  ROBOT FACE  — emotions change with state
-  │      mouth         │
-  ├────────────────────┤  y ≈ 592  (config: ui.face_height_frac)
-  │  You:  "..."       │  CAPTIONS
-  │  Robot: "..."      │
-  │               [🔴] │  safe-shutdown button
+  │  CAMERA PREVIEW    │  full-width live view + green face-detection boxes
+  ├────────────────────┤  y ≈ 360
+  │  [badge]  eyes     │  ROBOT FACE
+  │           mouth    │
+  ├────────────────────┤  y ≈ 592
+  │  You / Robot text  │  CAPTIONS + shutdown button
   └────────────────────┘  y = 800
 
-Landscape fallback (ui.portrait = false):
-  Full-screen face with a small camera thumbnail in the corner —
-  same behaviour as before this change.
+Landscape (W > H, e.g. 800 × 480):
+  ┌──────────────────┬──────────────────────────────┐
+  │  ROBOT FACE      │  CAMERA PREVIEW               │
+  │  eyes + mouth    │  live view + face-detect box  │
+  │  40% width       │  60% width                    │
+  ├──────────────────┴──────────────────────────────┤
+  │  You: "..."   Robot: "..."         [shutdown]    │
+  └─────────────────────────────────────────────────┘
 
-All drawing is best-effort; if a feature fails it falls back gracefully
-rather than crashing the robot.
+All drawing is best-effort; failures fall back gracefully without crashing.
 """
 
 import math
@@ -50,7 +50,7 @@ class Face:
 
         self.fps            = int(ui.get("fps", 30))
         self.show_captions  = bool(ui.get("show_captions", True))
-        self.portrait       = bool(ui.get("portrait", False))
+        self._portrait_cfg  = bool(ui.get("portrait", False))   # user preference
         self.mirror_preview = bool(ui.get("mirror_preview", True))
 
         pygame.display.init()
@@ -59,7 +59,9 @@ class Face:
         if ui.get("fullscreen", True):
             self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
         else:
-            self.screen = pygame.display.set_mode((480, 800) if self.portrait else (800, 480))
+            # Non-fullscreen: request the size matching the config preference.
+            self.screen = pygame.display.set_mode(
+                (480, 800) if self._portrait_cfg else (800, 480))
         pygame.display.set_caption("Smart Campus Robot")
         try:
             pygame.mouse.set_visible(False)
@@ -67,10 +69,28 @@ class Face:
             pass
 
         self.W, self.H = self.screen.get_size()
+
+        # Always derive portrait/landscape from actual screen pixels.
+        # The Pi 7" touchscreen natively outputs 800×480 (landscape).
+        # If /boot/firmware/config.txt has rotated the display to portrait
+        # (H > W), we must use portrait layout — the config flag is only a hint.
+        self.portrait = self.H > self.W
+        if self.portrait != self._portrait_cfg:
+            log.warning(
+                "Screen is %dx%d (%s) but config portrait=%s — "
+                "using %s layout. To change screen orientation, edit "
+                "display_rotate in /boot/firmware/config.txt or use raspi-config.",
+                self.W, self.H,
+                "portrait" if self.portrait else "landscape",
+                self._portrait_cfg,
+                "portrait" if self.portrait else "landscape",
+            )
+
         self.clock = pygame.time.Clock()
 
         # ----- Layout rectangles ------------------------------------------
         if self.portrait:
+            # Portrait 480×800: camera top, face middle, captions bottom.
             ph = int(self.H * float(ui.get("preview_height_frac", 0.45)))
             fh = int(self.H * float(ui.get("face_height_frac",    0.29)))
             ch = self.H - ph - fh
@@ -78,15 +98,17 @@ class Face:
             self.face_rect    = pygame.Rect(0,      ph,  self.W, fh)
             self.caption_rect = pygame.Rect(0, ph + fh,  self.W, ch)
         else:
-            # Landscape: animated face left, camera right, captions bottom.
-            ch     = int(self.H * 0.25) if self.show_captions else 0
-            main_h = self.H - ch
-            face_w = int(self.W * 0.58)
-            self.face_rect    = pygame.Rect(0,      0, face_w,          main_h)
-            self.preview_rect = pygame.Rect(face_w, 0, self.W - face_w, main_h)
-            self.caption_rect = pygame.Rect(0, main_h, self.W,          ch)
+            # Landscape 800×480: face left 40%, camera right 60%, captions bottom.
+            # Camera column is ~480×340 — close to 4:3, matches the camera frame.
+            cap_h  = int(self.H * 0.29) if self.show_captions else 0
+            main_h = self.H - cap_h
+            face_w = int(self.W * 0.40)
+            cam_w  = self.W - face_w
+            self.face_rect    = pygame.Rect(0,       0,      face_w, main_h)
+            self.preview_rect = pygame.Rect(face_w,  0,      cam_w,  main_h)
+            self.caption_rect = pygame.Rect(0,       main_h, self.W, cap_h)
 
-        # ----- Fonts (portrait uses face-zone height; landscape uses caption bar) -
+        # ----- Fonts -------------------------------------------------------
         fh_ref = self.face_rect.height
         if self.portrait:
             self.font_status  = pygame.font.SysFont("Arial", max(16, int(fh_ref * theme.FONT_STATUS_FRAC)),  bold=True)
@@ -94,12 +116,12 @@ class Face:
             self.font_label   = pygame.font.SysFont("Arial", max(12, int(fh_ref * theme.FONT_LABEL_FRAC)),   bold=True)
             self.font_overlay = pygame.font.SysFont("Arial", max(14, int(fh_ref * 0.10)))
         else:
-            # In landscape the caption bar is short; size caption text to fit it.
-            cap_h = max(40, self.caption_rect.height)
-            self.font_status  = pygame.font.SysFont("Arial", max(16, int(fh_ref * 0.08)),  bold=True)
-            self.font_caption = pygame.font.SysFont("Arial", max(14, int(cap_h * 0.16)))
-            self.font_label   = pygame.font.SysFont("Arial", max(12, int(cap_h * 0.14)),   bold=True)
-            self.font_overlay = pygame.font.SysFont("Arial", max(13, int(fh_ref * 0.054)))
+            # Landscape: caption bar is ~140px; scale text to fit it.
+            cap_h_ref = max(40, self.caption_rect.height)
+            self.font_status  = pygame.font.SysFont("Arial", max(16, int(fh_ref * 0.08)),       bold=True)
+            self.font_caption = pygame.font.SysFont("Arial", max(14, int(cap_h_ref * 0.17)))
+            self.font_label   = pygame.font.SysFont("Arial", max(12, int(cap_h_ref * 0.15)),    bold=True)
+            self.font_overlay = pygame.font.SysFont("Arial", max(13, int(fh_ref * 0.056)))
 
         # ----- Shutdown button (bottom-right of caption area) ---------------
         btn    = int(self.W * 0.12)
@@ -377,48 +399,49 @@ class Face:
     # ====================================================== LANDSCAPE FALLBACK
 
     def _draw_face_landscape(self, state_value, now):
-        """Landscape left column: animated robot face with status badge."""
+        """Landscape left column (40% of screen): animated face + status badge."""
         r  = self.face_rect
         cx = r.centerx
 
         color    = theme.eye_color(state_value)
         openness = self._eye_openness(now)
-        bob_amp  = 0.0 if state_value in ("error",) else r.height * 0.018
+        bob_amp  = 0.0 if state_value in ("error",) else r.height * 0.016
         bob      = math.sin((now - self._t0) * 1.5) * bob_amp
 
-        # Eyes scaled to the face column width/height (not the full screen width)
-        eye_y  = r.top + int(r.height * 0.50) + int(bob)
-        eye_rx = int(r.width * 0.15)
+        # Eyes: sized to fit comfortably inside the face column.
+        # At 320×340: eye_rx≈38, eye_ry≈48, gap≈89 — fills column nicely.
+        eye_y  = r.top + int(r.height * 0.48) + int(bob)
+        eye_rx = int(r.width  * 0.12)
         eye_ry = int(r.height * 0.14)
-        gap    = int(r.width * 0.27)
+        gap    = int(r.width  * 0.28)
 
-        gox = int(self._gaze_x * eye_rx * 0.42)
-        goy = int(self._gaze_y * eye_ry * 0.42)
+        gox = int(self._gaze_x * eye_rx * 0.45)
+        goy = int(self._gaze_y * eye_ry * 0.45)
 
         self._draw_eye(cx - gap, eye_y, eye_rx, eye_ry, color, openness, state_value, gox, goy)
         self._draw_eye(cx + gap, eye_y, eye_rx, eye_ry, color, openness, state_value, gox, goy)
 
         if state_value == "listening":
-            self._draw_listening_ring(cx, eye_y, int(gap + eye_rx * 1.4), now)
+            self._draw_listening_ring(cx, eye_y, int(gap + eye_rx * 1.5), now)
 
         mouth_y = r.top + int(r.height * 0.74) + int(bob)
-        self._draw_mouth(state_value, cx, mouth_y, eye_rx, int(r.height * 0.13), now)
+        self._draw_mouth(state_value, cx, mouth_y, eye_rx, int(r.height * 0.12), now)
 
         self._draw_status_badge(state_value)
 
     def _draw_captions_landscape(self):
         r   = self.caption_rect
-        pad = int(self.W * 0.04)
+        pad = int(self.W * 0.03)
         pygame.draw.rect(self.screen, theme.PANEL, r)
         pygame.draw.line(self.screen, theme.PANEL_BORDER, r.topleft, r.topright, 2)
         max_w = self.W - pad * 2
-        y     = r.top + int(r.height * 0.10)
+        y     = r.top + int(r.height * 0.08)
         if self._user_text:
             y = self._blit_labeled("You:", self._user_text, pad, y, max_w,
                                    theme.TEXT_SECONDARY, max_lines=1)
         if self._robot_text:
             self._blit_labeled("Robot:", self._robot_text, pad, y, max_w,
-                               theme.TEXT_PRIMARY, max_lines=1)
+                               theme.TEXT_PRIMARY, max_lines=2)
 
     def _draw_camera_panel(self, state_value):
         """Landscape right column: live camera preview with face-detection boxes."""
