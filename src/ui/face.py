@@ -78,18 +78,28 @@ class Face:
             self.face_rect    = pygame.Rect(0,      ph,  self.W, fh)
             self.caption_rect = pygame.Rect(0, ph + fh,  self.W, ch)
         else:
-            # Landscape: full screen for the face, captions at the bottom.
-            ch = int(self.H * 0.26) if self.show_captions else 0
-            self.preview_rect = None   # just a small thumbnail overlay
-            self.face_rect    = pygame.Rect(0, 0,       self.W, self.H - ch)
-            self.caption_rect = pygame.Rect(0, self.H - ch, self.W, ch)
+            # Landscape: animated face left, camera right, captions bottom.
+            ch     = int(self.H * 0.25) if self.show_captions else 0
+            main_h = self.H - ch
+            face_w = int(self.W * 0.58)
+            self.face_rect    = pygame.Rect(0,      0, face_w,          main_h)
+            self.preview_rect = pygame.Rect(face_w, 0, self.W - face_w, main_h)
+            self.caption_rect = pygame.Rect(0, main_h, self.W,          ch)
 
-        # ----- Fonts (scaled to the face zone, not the full screen) ---------
+        # ----- Fonts (portrait uses face-zone height; landscape uses caption bar) -
         fh_ref = self.face_rect.height
-        self.font_status  = pygame.font.SysFont("Arial", max(16, int(fh_ref * theme.FONT_STATUS_FRAC)),  bold=True)
-        self.font_caption = pygame.font.SysFont("Arial", max(14, int(fh_ref * theme.FONT_CAPTION_FRAC)))
-        self.font_label   = pygame.font.SysFont("Arial", max(12, int(fh_ref * theme.FONT_LABEL_FRAC)),   bold=True)
-        self.font_overlay = pygame.font.SysFont("Arial", max(14, int(fh_ref * 0.10)))
+        if self.portrait:
+            self.font_status  = pygame.font.SysFont("Arial", max(16, int(fh_ref * theme.FONT_STATUS_FRAC)),  bold=True)
+            self.font_caption = pygame.font.SysFont("Arial", max(14, int(fh_ref * theme.FONT_CAPTION_FRAC)))
+            self.font_label   = pygame.font.SysFont("Arial", max(12, int(fh_ref * theme.FONT_LABEL_FRAC)),   bold=True)
+            self.font_overlay = pygame.font.SysFont("Arial", max(14, int(fh_ref * 0.10)))
+        else:
+            # In landscape the caption bar is short; size caption text to fit it.
+            cap_h = max(40, self.caption_rect.height)
+            self.font_status  = pygame.font.SysFont("Arial", max(16, int(fh_ref * 0.08)),  bold=True)
+            self.font_caption = pygame.font.SysFont("Arial", max(14, int(cap_h * 0.16)))
+            self.font_label   = pygame.font.SysFont("Arial", max(12, int(cap_h * 0.14)),   bold=True)
+            self.font_overlay = pygame.font.SysFont("Arial", max(13, int(fh_ref * 0.054)))
 
         # ----- Shutdown button (bottom-right of caption area) ---------------
         btn    = int(self.W * 0.12)
@@ -212,12 +222,13 @@ class Face:
             if self.show_captions:
                 self._draw_caption_zone()
         else:
+            pygame.draw.rect(self.screen, theme.FACE_BG, self.face_rect)
             self._draw_face_landscape(sv, now)
+            if self.preview_rect is not None:
+                self._draw_camera_panel(sv)
+            self._draw_notice(now)
             if self.show_captions:
                 self._draw_captions_landscape()
-            if self._preview is not None:
-                self._draw_preview_thumbnail()
-            self._draw_notice(now)
 
         self._draw_shutdown_button()
         pygame.display.flip()
@@ -288,8 +299,8 @@ class Face:
         """Transient banner near the top of the preview, e.g. 'User is waving'."""
         if not self._notice or now >= self._notice_until:
             return
-        # Anchor to the preview zone in portrait, or the top of the screen otherwise.
-        r = self.preview_rect if (self.portrait and self.preview_rect) else \
+        # Anchor to the preview / camera zone when available.
+        r = self.preview_rect if self.preview_rect is not None else \
             pygame.Rect(0, 0, self.W, int(self.H * 0.12))
         surf = self.font_overlay.render(self._notice, True, theme.NOTICE_TEXT)
         sw, sh = surf.get_size()
@@ -366,18 +377,20 @@ class Face:
     # ====================================================== LANDSCAPE FALLBACK
 
     def _draw_face_landscape(self, state_value, now):
-        """Original landscape layout: face fills the screen (minus caption bar)."""
+        """Landscape left column: animated robot face with status badge."""
         r  = self.face_rect
         cx = r.centerx
 
         color    = theme.eye_color(state_value)
         openness = self._eye_openness(now)
-        bob      = math.sin((now - self._t0) * 1.5) * (r.height * 0.006)
+        bob_amp  = 0.0 if state_value in ("error",) else r.height * 0.018
+        bob      = math.sin((now - self._t0) * 1.5) * bob_amp
 
-        eye_y  = r.top + int(r.height * 0.42) + int(bob)
-        eye_rx = int(self.W * 0.085)
-        eye_ry = int(r.height * 0.12)
-        gap    = int(self.W * 0.20)
+        # Eyes scaled to the face column width/height (not the full screen width)
+        eye_y  = r.top + int(r.height * 0.50) + int(bob)
+        eye_rx = int(r.width * 0.15)
+        eye_ry = int(r.height * 0.14)
+        gap    = int(r.width * 0.27)
 
         gox = int(self._gaze_x * eye_rx * 0.42)
         goy = int(self._gaze_y * eye_ry * 0.42)
@@ -385,12 +398,13 @@ class Face:
         self._draw_eye(cx - gap, eye_y, eye_rx, eye_ry, color, openness, state_value, gox, goy)
         self._draw_eye(cx + gap, eye_y, eye_rx, eye_ry, color, openness, state_value, gox, goy)
 
-        mouth_y = r.top + int(r.height * 0.66) + int(bob)
-        self._draw_mouth(state_value, cx, mouth_y, eye_rx, int(r.height * 0.12), now)
+        if state_value == "listening":
+            self._draw_listening_ring(cx, eye_y, int(gap + eye_rx * 1.4), now)
 
-        if self._status:
-            s = self.font_status.render(self._status, True, theme.STATUS_TEXT)
-            self.screen.blit(s, s.get_rect(center=(cx, r.top + int(r.height * 0.10))))
+        mouth_y = r.top + int(r.height * 0.74) + int(bob)
+        self._draw_mouth(state_value, cx, mouth_y, eye_rx, int(r.height * 0.13), now)
+
+        self._draw_status_badge(state_value)
 
     def _draw_captions_landscape(self):
         r   = self.caption_rect
@@ -404,7 +418,57 @@ class Face:
                                    theme.TEXT_SECONDARY, max_lines=1)
         if self._robot_text:
             self._blit_labeled("Robot:", self._robot_text, pad, y, max_w,
-                               theme.TEXT_PRIMARY, max_lines=2)
+                               theme.TEXT_PRIMARY, max_lines=1)
+
+    def _draw_camera_panel(self, state_value):
+        """Landscape right column: live camera preview with face-detection boxes."""
+        r = self.preview_rect
+        pygame.draw.rect(self.screen, theme.PANEL, r)
+
+        if self._preview is None:
+            t = self.font_overlay.render("Camera not available", True, theme.PREVIEW_NONE)
+            self.screen.blit(t, t.get_rect(center=r.center))
+            pygame.draw.line(self.screen, theme.PANEL_BORDER, r.topleft, r.bottomleft, 2)
+            return
+
+        try:
+            scaled = pygame.transform.smoothscale(self._preview, (r.width, r.height))
+            if self.mirror_preview:
+                scaled = pygame.transform.flip(scaled, True, False)
+            self.screen.blit(scaled, r.topleft)
+        except Exception:
+            pygame.draw.rect(self.screen, theme.PANEL, r)
+            pygame.draw.line(self.screen, theme.PANEL_BORDER, r.topleft, r.bottomleft, 2)
+            return
+
+        if self._frame_faces:
+            fw, fh = self._frame_size
+            sx = r.width / fw
+            sy = r.height / fh
+            for (fx, fy, bw, bh) in self._frame_faces:
+                if self.mirror_preview:
+                    fx = fw - (fx + bw)
+                bx = r.x + int(fx * sx)
+                by = r.y + int(fy * sy)
+                try:
+                    pygame.draw.rect(self.screen, theme.PREVIEW_BOX,
+                                     (bx, by, int(bw * sx), int(bh * sy)), 2, border_radius=6)
+                except TypeError:
+                    pygame.draw.rect(self.screen, theme.PREVIEW_BOX,
+                                     (bx, by, int(bw * sx), int(bh * sy)), 2)
+
+        if not self._frame_faces and state_value == "idle":
+            try:
+                ov = pygame.Surface((r.width, r.height), pygame.SRCALPHA)
+                ov.fill((0, 0, 0, 70))
+                self.screen.blit(ov, r.topleft)
+            except Exception:
+                pass
+            t = self.font_overlay.render("Looking for you...", True, theme.PREVIEW_NONE)
+            self.screen.blit(t, t.get_rect(center=r.center))
+
+        # Left border dividing face column from camera column
+        pygame.draw.line(self.screen, theme.PANEL_BORDER, r.topleft, r.bottomleft, 2)
 
     def _draw_preview_thumbnail(self):
         tw = int(self.W * 0.16)
@@ -593,7 +657,7 @@ class Face:
         px, py = int(sw * 0.40), int(sh * 0.28)
         badge_w = sw + px * 2
         badge_h = sh + py * 2
-        bx = (self.W - badge_w) // 2
+        bx = self.face_rect.x + (self.face_rect.width - badge_w) // 2
         by = self.face_rect.top + int(self.face_rect.height * 0.04)
 
         try:

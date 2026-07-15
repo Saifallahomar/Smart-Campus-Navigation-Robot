@@ -531,9 +531,12 @@ class Robot:
         if answer is None:
             # Network / API failure — drop unanswered turn to keep history clean.
             self.messages.pop()
-            self._hold(RobotState.ERROR, ERROR_HOLD_SECS)
-            return ("Sorry, I seem to have lost my connection. "
-                    "Could you try again in a moment?"), True
+            log.warning("AI connection failed — internet may be down.")
+            self.face.set_caption(robot="Internet connection lost. Reconnecting...")
+            self._hold(RobotState.ERROR, 3.0)
+            self.face.clear_caption()
+            return ("Sorry, I can't reach my connection right now. "
+                    "Please try again in a moment!"), True
 
         self.messages.append({"role": "assistant", "content": answer})
         log.info("Robot: %s", answer)

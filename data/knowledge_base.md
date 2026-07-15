@@ -363,6 +363,20 @@ If you feel unsafe on campus: call Security (9999) or go directly to Reception i
 First aid kits and defibrillators are in all main buildings.
 
 ====================================================================
+ENTERPRISE EVENTS AND CAMPUS ACTIVITIES 2026
+====================================================================
+
+Enterprise Summer Scholarship: Show & Tell Social
+- Date: Thursday, 16 July 2026.
+- Time: 11:00 AM to 12:00 PM (noon).
+- Location: Room 2X117, X Block (Bristol Business School), Frenchay Campus.
+- What it is: A showcase event where Enterprise Summer Scholarship students present their projects and ideas in an informal, social setting.
+- Who can attend: Scholarship students, staff, and invited guests. If you are unsure whether you can attend, check with your supervisor or the Enterprise team.
+- More info: Contact the Enterprise team or the InfoHub in D Block.
+
+NOTE TO THE OWNER (Saif): Add future events here in the same format as above.
+
+====================================================================
 OPEN DAYS 2026
 ====================================================================
 
