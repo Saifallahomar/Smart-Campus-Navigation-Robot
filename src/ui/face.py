@@ -70,20 +70,55 @@ class Face:
 
         self.W, self.H = self.screen.get_size()
 
-        # Always derive portrait/landscape from actual screen pixels.
+        # ── Orientation + software-rotation logic ─────────────────────────────
+        #
         # The Pi 7" touchscreen natively outputs 800×480 (landscape).
-        # If /boot/firmware/config.txt has rotated the display to portrait
-        # (H > W), we must use portrait layout — the config flag is only a hint.
-        self.portrait = self.H > self.W
-        if self.portrait != self._portrait_cfg:
+        # If /boot/firmware/config.txt has `display_rotate=1` (or 3), the OS
+        # presents a 480×800 portrait framebuffer to software and physically
+        # rotates the output 90°.  This makes every pixel on screen appear
+        # rotated — eyes stack vertically, text appears sideways.
+        #
+        # Fix A (permanent, recommended): remove display_rotate from
+        #         /boot/firmware/config.txt and reboot.
+        # Fix B (software, applied below): render to an 800×480 canvas,
+        #         rotate it 90° CCW, blit to the 480×800 framebuffer.
+        #         The OS then rotates 90° CW → net rotation = 0. ✓
+        #
+        # `software_rotate` can be set manually in config.json ui section:
+        #   0  = auto (default: no rotation, or 90 if screen appears portrait)
+        #   90 = 90° CCW canvas rotation  (counteracts display_rotate=1)
+        #  -90 = 90° CW  canvas rotation  (counteracts display_rotate=3)
+        #  180 = 180°                      (counteracts display_rotate=2)
+        # ─────────────────────────────────────────────────────────────────────
+
+        self._sw_rotate   = int(ui.get("software_rotate", 0))
+        self._real_screen = None   # set below if software rotation is active
+
+        if self.W >= self.H:
+            # Screen is landscape — landscape layout, no software rotation.
+            self.portrait = False
+
+        elif self._portrait_cfg:
+            # Screen is portrait AND config wants portrait — portrait layout.
+            self.portrait = True
+
+        else:
+            # Screen appears portrait (H > W) but config wants landscape.
+            # This means display_rotate is active in the OS.  Apply software
+            # rotation so the rendered landscape content appears correct.
+            _scr_W, _scr_H = self.W, self.H        # e.g., 480 × 800
+            self.W, self.H  = _scr_H, _scr_W        # swap to landscape: 800 × 480
+            if self._sw_rotate == 0:
+                self._sw_rotate = 90                 # 90° CCW counteracts 90° CW OS rotation
+            self.portrait     = False
+            self._real_screen = self.screen
+            self.screen       = pygame.Surface((self.W, self.H))
             log.warning(
-                "Screen is %dx%d (%s) but config portrait=%s — "
-                "using %s layout. To change screen orientation, edit "
-                "display_rotate in /boot/firmware/config.txt or use raspi-config.",
-                self.W, self.H,
-                "portrait" if self.portrait else "landscape",
-                self._portrait_cfg,
-                "portrait" if self.portrait else "landscape",
+                "Screen is %dx%d (portrait) but portrait=False — "
+                "software_rotate=%d active. "
+                "If the display still looks rotated, try software_rotate=-90 in config. "
+                "Permanent fix: remove display_rotate from /boot/firmware/config.txt.",
+                _scr_W, _scr_H, self._sw_rotate,
             )
 
         self.clock = pygame.time.Clock()
@@ -253,6 +288,10 @@ class Face:
                 self._draw_captions_landscape()
 
         self._draw_shutdown_button()
+        if self._real_screen is not None:
+            # Software rotation: rotate the canvas then blit to the actual display.
+            rotated = pygame.transform.rotate(self.screen, self._sw_rotate)
+            self._real_screen.blit(rotated, (0, 0))
         pygame.display.flip()
         self.clock.tick(self.fps)
 
