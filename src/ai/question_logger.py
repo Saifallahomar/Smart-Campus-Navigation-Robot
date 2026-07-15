@@ -5,6 +5,8 @@ Logs only plain text — never audio, images, video, face data, or names.
 Off by default. Enable in config.json:  question_logging.enabled = true
 
 Log file location:  logs/questions.csv
+Columns: timestamp, detected_language, user_question, robot_answer,
+         category, used_camera, unsure
 """
 
 import csv
@@ -20,9 +22,34 @@ _FIELDS = [
     "detected_language",
     "user_question",
     "robot_answer",
-    "used_faq",
+    "category",
+    "used_camera",
     "unsure",
 ]
+
+# Simple keyword-based category inference — keeps robot.py clean.
+_CATEGORY_RULES = [
+    (["where", "direction", "how do i get", "how to get", "find", "located", "location",
+      "block", "room", "floor", "building", "map"],          "directions"),
+    (["what time", "when", "open", "close", "hour", "schedule", "timetable"],
+                                                              "schedule"),
+    (["event", "show and tell", "scholarship", "open day", "activity"],
+                                                              "event"),
+    (["course", "module", "degree", "programme", "program", "study",
+      "engineering", "mechatronics", "computer science"],     "courses"),
+    (["help", "support", "service", "wellbeing", "health", "disability",
+      "finance", "bursary", "accommodation", "library"],      "support"),
+    (["what can you see", "what do you see", "describe", "camera",
+      "can you see"],                                         "vision"),
+]
+
+
+def _infer_category(question: str) -> str:
+    q = question.lower()
+    for keywords, category in _CATEGORY_RULES:
+        if any(kw in q for kw in keywords):
+            return category
+    return "general"
 
 
 class QuestionLogger:
@@ -55,8 +82,8 @@ class QuestionLogger:
                 self.enabled = False
 
     def record(self, language: str, question: str, answer: str,
-               used_faq: bool = False, unsure: bool = False) -> None:
-        """Append one Q&A row to the CSV.  Safe to call even if disabled."""
+               used_camera: bool = False, unsure: bool = False) -> None:
+        """Append one Q&A row to the CSV. Safe to call even if disabled."""
         if not self.enabled or self._path is None:
             return
         try:
@@ -65,10 +92,13 @@ class QuestionLogger:
                 language,
                 question[:500],          # cap to avoid huge cells
                 answer[:500],
-                "yes" if used_faq else "no",
+                _infer_category(question),
+                "yes" if used_camera else "no",
                 "yes" if unsure else "no",
             ]
             with open(self._path, "a", newline="", encoding="utf-8") as f:
                 csv.writer(f).writerow(row)
+            log.info("Question logged [%s | %s]: %.60s…",
+                     language, _infer_category(question), question)
         except Exception as exc:
-            log.debug("Question log write failed: %s", exc)
+            log.debug("Question log write failed (robot continues): %s", exc)

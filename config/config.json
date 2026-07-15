@@ -1,5 +1,5 @@
 {
-  "_comment": "User-editable settings. Edit values here \u2014 no need to touch Python code. Secrets go in .env, NOT here.",
+  "_comment": "User-editable settings. Edit values here — no need to touch Python code. Secrets go in .env, NOT here.",
   "mock_mode": false,
   "language": "auto",
   "devices": {
@@ -82,10 +82,10 @@
   },
   "question_logging": {
     "_comment": "Optional text-only log of questions and answers for improving the robot. Logs to logs/questions.csv. Never logs audio, images, faces, or personal data.",
-    "enabled": false
+    "enabled": true
   },
   "servo": {
-    "_comment": "Single 180-degree pan servo for the head. It moves ONLY on a voice command (e.g. 'look left', 'look forward') \u2014 it does NOT auto-follow the camera. Signal -> GPIO 18 (physical pin 12), power -> external 5V, ground -> shared GND. Set enabled to false if no servo is connected.",
+    "_comment": "Single 180-degree pan servo for the head. It moves ONLY on a voice command (e.g. 'look left', 'look forward') — it does NOT auto-follow the camera. Signal -> GPIO 18 (physical pin 12), power -> external 5V, ground -> shared GND. Set enabled to false if no servo is connected.",
     "enabled": true,
     "gpio_pin": 18,
     "_angle_comment": "Full safe sweep range in degrees (180-degree servo = -90..90). Narrow these if the head hits something.",
