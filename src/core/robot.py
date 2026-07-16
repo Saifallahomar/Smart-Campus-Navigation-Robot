@@ -3,19 +3,18 @@ The Robot orchestrator — the main loop that ties everything together.
 
 Conversation flow
 -----------------
-1. Wait for a face (idle with live camera preview).
-2. Start a session — the robot stays in conversation mode as long as
-   the person is visible.
-3. Within the session: wake word → listen → transcribe → answer → speak.
-   Repeat indefinitely until the person leaves or says goodbye.
-4. If the person disappears for longer than `conversation.person_lost_timeout`
-   seconds, the session ends and the robot returns to idle.
+The robot listens continuously regardless of face detection:
+1. Start listening immediately on startup.
+2. When speech is heard: transcribe → answer → speak → listen again.
+3. Face detection runs in the background for the camera preview,
+   green face box, animated eye gaze, and wave detection only.
+   It does NOT gate or stop listening.
+4. A "stop" voice command or Ctrl+C shuts the robot down cleanly.
 
-Wave detection (optional, off by default)
------------------------------------------
-When enabled, the robot watches for a hand wave ABOVE the detected face while
-in idle/waiting mode and greets the person proactively before they speak.
-Set `wave_detection.enabled = true` in config.json to try it.
+Wave detection (optional, enabled in config)
+--------------------------------------------
+When enabled, the robot watches for a hand wave ABOVE the detected face and
+shows a notice on screen. Set `wave_detection.enabled = true` in config.json.
 
 Camera preview runs continuously via the CameraFeed background thread, so
 the user always sees themselves on screen regardless of the robot's state.
@@ -216,7 +215,8 @@ class Robot:
         max_deg = float(servo_cfg.get("max_angle", 90)) or 90.0
         self._voice_look_frac = max(0.0, min(1.0, look_deg / max_deg))
 
-        # Cached here so _listen_tick() can stop the recorder when person leaves.
+        # person_lost_timeout kept in settings for reference; not used to gate
+        # listening (robot always listens). Used by wave detection cooldown context.
         conv_cfg = settings.get('conversation') or {}
         self._lost_timeout = float(conv_cfg.get('person_lost_timeout', 8.0))
 
