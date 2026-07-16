@@ -242,12 +242,7 @@ class Robot:
 
         try:
             while self.running:
-                # Phase 1: idle until someone appears.
-                if not self._wait_for_face():
-                    break
-                # Phase 2: multi-turn conversation session.
                 self._run_session()
-                log.info("Returned to idle — watching for next visitor.")
 
         except KeyboardInterrupt:
             log.info("Interrupted by keyboard.")
@@ -293,52 +288,18 @@ class Robot:
 
     def _run_session(self):
         """
-        Multi-turn conversation while the person stays visible.
-
-        The session ends when:
-          - The person has been absent for `person_lost_timeout` seconds.
-          - The person says a goodbye word.
-          - A stop word triggers full shutdown.
-          - The optional `max_session_seconds` limit is reached.
+        Always-on conversation loop. Listens continuously while the robot is
+        running. Face detection is NOT used to gate listening — it runs in the
+        background for the camera preview, eye tracking, and wave detection only.
+        The loop ends only on a stop word or shutdown signal.
         """
-        log.info("Session started — beginning conversation loop.")
+        log.info("Listening loop started.")
         self._last_face_time = time.time()
-        session_start = time.time()
-        _last_status_log = time.time()
-
-        conv = self.settings.get('conversation') or {}
-        lost_timeout = float(conv.get('person_lost_timeout', 8.0))
-        max_secs = conv.get('max_session_seconds')
-        max_secs = float(max_secs) if max_secs else None
 
         while self.running:
-            # Keep the face timestamp fresh while person is visible.
+            # Keep face timestamp fresh (used by eye tracking / wave detection).
             if self.feed.has_face:
                 self._last_face_time = time.time()
-
-            # Periodic heartbeat log so it's clear the session loop is running.
-            now = time.time()
-            if now - _last_status_log >= 10.0:
-                absent = now - self._last_face_time
-                log.debug("Session still active — person visible: %s, absent %.1fs",
-                          self.feed.has_face, absent)
-                _last_status_log = now
-
-            # End session only after the full grace period expires.
-            absent = time.time() - self._last_face_time
-            if absent > lost_timeout:
-                log.info("Person lost timeout reached (%.1fs) — ending session.",
-                         absent)
-                break
-            if not self.feed.has_face and absent > 0.5:
-                log.debug("Face temporarily lost (%.1fs) — keeping session active.",
-                          absent)
-
-            # Optional hard session time limit.
-            if max_secs and (time.time() - session_start) > max_secs:
-                log.info("Session time limit (%.0fs) reached.", max_secs)
-                self._farewell()
-                break
 
             # Wake word gate (no-op when disabled, returns True immediately).
             if not self.wakeword.wait_for_wake(on_tick=self._session_idle_tick):
@@ -347,8 +308,6 @@ class Robot:
             # Record and transcribe.
             question = self._listen_and_transcribe()
             if question is None:
-                if self.feed.has_face:
-                    log.debug("No question captured — person still visible, looping.")
                 self._render(RobotState.IDLE)
                 continue
 
@@ -358,11 +317,11 @@ class Robot:
                 self.running = False
                 break
 
-            # Friendly goodbye → end session only.
+            # Friendly goodbye → say bye then keep listening.
             if self._is_goodbye(question):
                 log.info("User said goodbye.")
                 self._farewell()
-                break
+                continue
 
             # Voice command to move the physical head servo (no AI call).
             head_dir = self._parse_head_command(question)
@@ -371,7 +330,7 @@ class Robot:
                 self._handle_head_command(head_dir, question)
                 continue
 
-            # "What can you see?" → capture ONE frame and describe it (no AI text call).
+            # "What can you see?" → capture ONE frame and describe it.
             if self._is_vision_query(question):
                 log.info("Vision query.")
                 self._handle_vision_query(question)
@@ -390,7 +349,6 @@ class Robot:
             # Normal Q&A turn.
             log.info("Thinking...")
             answer, is_fallback = self._get_answer(question)
-            # Optional text-only log (no audio, images, or personal data).
             self.q_logger.record(detect_language(question), question, answer,
                                  unsure=is_fallback)
             log.info("Speaking: %s", answer[:80])
@@ -400,7 +358,7 @@ class Robot:
             self.face.clear_caption()
             self._render(RobotState.IDLE)
 
-        log.info("Session ended — returned to idle.")
+        log.info("Listening loop ended.")
         self._render(RobotState.IDLE)
 
     # ========================================================== face waiting
@@ -507,17 +465,7 @@ class Robot:
             if audio_file is None:
                 if not self.running:
                     return None
-                absent = time.time() - self._last_face_time
-                if absent > self._lost_timeout:
-                    log.info("Person lost timeout reached (%.1fs) — ending session.",
-                             absent)
-                    return None
-                # Face may have flickered — retry as long as person hasn't been
-                # absent longer than the session timeout.  Do NOT gate on
-                # self.feed.has_face — a brief detection gap must not kill the turn.
-                if absent > 0.5:
-                    log.debug("Face temporarily lost (%.1fs) — keeping session active.",
-                              absent)
+                # No speech in this attempt — retry if we have attempts left.
                 if attempt < _MAX_LISTEN_RETRIES:
                     continue
                 log.info("No speech after all retries — returning to idle.")
@@ -655,11 +603,6 @@ class Robot:
         self.face.render(RobotState.LISTENING)
         self._pump()
         if not self.running:
-            return True
-        # Stop the recorder early when the person has walked away, so the robot
-        # doesn't stay stuck in LISTENING state after the visitor leaves.
-        if time.time() - self._last_face_time > self._lost_timeout:
-            log.info("Person left during listening — stopping recorder.")
             return True
         return False
 
