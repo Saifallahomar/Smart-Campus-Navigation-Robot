@@ -13,7 +13,8 @@
     "chunk_seconds": 0.2,
     "voice_threshold": 500,
     "silence_to_stop": 0.9,
-    "max_record_seconds": 10
+    "max_record_seconds": 10,
+    "max_initial_wait_seconds": 6.0
   },
   "vision": {
     "enabled": true,

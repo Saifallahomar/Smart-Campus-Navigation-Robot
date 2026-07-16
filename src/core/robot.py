@@ -247,6 +247,7 @@ class Robot:
                     break
                 # Phase 2: multi-turn conversation session.
                 self._run_session()
+                log.info("Returned to idle — watching for next visitor.")
 
         except KeyboardInterrupt:
             log.info("Interrupted by keyboard.")
@@ -300,9 +301,10 @@ class Robot:
           - A stop word triggers full shutdown.
           - The optional `max_session_seconds` limit is reached.
         """
-        log.info("Session started.")
+        log.info("Session started — beginning conversation loop.")
         self._last_face_time = time.time()
         session_start = time.time()
+        _last_status_log = time.time()
 
         conv = self.settings.get('conversation') or {}
         lost_timeout = float(conv.get('person_lost_timeout', 8.0))
@@ -314,11 +316,21 @@ class Robot:
             if self.feed.has_face:
                 self._last_face_time = time.time()
 
+            # Periodic heartbeat log so it's clear the session loop is running.
+            now = time.time()
+            if now - _last_status_log >= 10.0:
+                absent = now - self._last_face_time
+                log.debug("Session still active — person visible: %s, absent %.1fs",
+                          self.feed.has_face, absent)
+                _last_status_log = now
+
             # End session if person has been gone too long.
             absent = time.time() - self._last_face_time
             if absent > lost_timeout:
-                log.info("Person absent %.1fs — returning to idle.", absent)
+                log.info("Person lost — absent %.1fs — returning to idle.", absent)
                 break
+            if absent > lost_timeout * 0.5 and not self.feed.has_face:
+                log.debug("Person not visible (%.1fs) — watching for return...", absent)
 
             # Optional hard session time limit.
             if max_secs and (time.time() - session_start) > max_secs:
@@ -333,6 +345,8 @@ class Robot:
             # Record and transcribe.
             question = self._listen_and_transcribe()
             if question is None:
+                if self.feed.has_face:
+                    log.debug("No question captured — person still visible, looping.")
                 self._render(RobotState.IDLE)
                 continue
 
@@ -372,17 +386,19 @@ class Robot:
                 continue
 
             # Normal Q&A turn.
+            log.info("Thinking...")
             answer, is_fallback = self._get_answer(question)
             # Optional text-only log (no audio, images, or personal data).
             self.q_logger.record(detect_language(question), question, answer,
                                  unsure=is_fallback)
+            log.info("Speaking: %s", answer[:80])
             self.face.set_caption(robot=answer)
             self._speak(answer)
             self._post_expression(question, is_fallback)
             self.face.clear_caption()
             self._render(RobotState.IDLE)
 
-        log.info("Session ended.")
+        log.info("Session ended — returned to idle.")
         self._render(RobotState.IDLE)
 
     # ========================================================== face waiting
@@ -393,7 +409,7 @@ class Robot:
             self._hold(RobotState.IDLE, 0.5)
             return self.running
 
-        log.info("Waiting for a person...")
+        log.info("Waiting for a person... (camera feed active)")
         self.wave_detector.reset()
 
         while self.running:
@@ -466,17 +482,22 @@ class Robot:
         Record the user, transcribe, and return text — or None.
 
         Retries up to _MAX_LISTEN_RETRIES times when the recorder returns
-        nothing but the person is still present (transient mic failure).
+        nothing but the person is still present (transient mic failure or
+        pre-speech timeout in recorder).
         Returns None immediately when the person is gone or the robot stops.
         """
         self.face.clear_caption()
 
         for attempt in range(1 + _MAX_LISTEN_RETRIES):
             if attempt == 0:
-                log.info("Starting listening...")
+                log.info("Listening started...")
             else:
-                log.info("No speech detected, retrying (%d/%d)...",
+                log.info("No speech detected — retrying (%d/%d)...",
                          attempt, _MAX_LISTEN_RETRIES)
+                # Brief on-screen hint so the person knows the robot is still ready.
+                self.face.set_caption(robot="I'm listening — please speak clearly.")
+                self._hold(RobotState.LISTENING, 0.8)
+                self.face.clear_caption()
 
             audio_file = self.recorder.record_until_silence(
                 self.voice_path, on_tick=self._listen_tick)
@@ -489,13 +510,14 @@ class Robot:
                 if absent > self._lost_timeout * 0.5:
                     log.info("Person lost during listening — returning to idle.")
                     return None
-                # Person still present — possible transient mic hiccup; retry.
+                # Person still present — pre-speech timeout or transient mic hiccup.
                 if attempt < _MAX_LISTEN_RETRIES and self.feed.has_face:
                     continue
+                log.info("No speech after all retries — returning to idle.")
                 return None
 
+            log.info("Speech captured — transcribing...")
             self._render(RobotState.THINKING)
-            log.info("Transcribing...")
             question = self.assistant.transcribe(audio_file)
 
             if not question:

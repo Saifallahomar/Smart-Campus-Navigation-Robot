@@ -28,6 +28,10 @@ class Recorder:
         self.voice_threshold = a.get("voice_threshold", 500)
         self.silence_to_stop = a.get("silence_to_stop", 0.9)
         self.max_record_seconds = a.get("max_record_seconds", 10)
+        # How long to wait for speech to BEGIN before giving up and returning None.
+        # Without this, the recorder blocks indefinitely when the mic threshold is
+        # never crossed (too high, person too quiet, or mic not picking up audio).
+        self.max_initial_wait_seconds = float(a.get("max_initial_wait_seconds", 6.0))
         self.device = settings.devices.get("mic_device", 1)
 
         self.available = _HAS_AUDIO and not settings.mock_mode
@@ -47,6 +51,7 @@ class Recorder:
         started = False
         silence_time = 0.0
         total_time = 0.0
+        pre_speech_time = 0.0   # time spent waiting for speech to begin
 
         try:
             with sd.InputStream(
@@ -69,6 +74,13 @@ class Recorder:
                         silence_time += self.chunk_seconds
                         total_time += self.chunk_seconds
                         if silence_time >= self.silence_to_stop:
+                            break
+                    else:
+                        # Still waiting for speech to begin.
+                        pre_speech_time += self.chunk_seconds
+                        if pre_speech_time >= self.max_initial_wait_seconds:
+                            log.info("No speech heard after %.1fs — returning to caller.",
+                                     pre_speech_time)
                             break
 
                     if on_tick is not None and on_tick(volume, started):
