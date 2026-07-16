@@ -324,13 +324,15 @@ class Robot:
                           self.feed.has_face, absent)
                 _last_status_log = now
 
-            # End session if person has been gone too long.
+            # End session only after the full grace period expires.
             absent = time.time() - self._last_face_time
             if absent > lost_timeout:
-                log.info("Person lost — absent %.1fs — returning to idle.", absent)
+                log.info("Person lost timeout reached (%.1fs) — ending session.",
+                         absent)
                 break
-            if absent > lost_timeout * 0.5 and not self.feed.has_face:
-                log.debug("Person not visible (%.1fs) — watching for return...", absent)
+            if not self.feed.has_face and absent > 0.5:
+                log.debug("Face temporarily lost (%.1fs) — keeping session active.",
+                          absent)
 
             # Optional hard session time limit.
             if max_secs and (time.time() - session_start) > max_secs:
@@ -505,13 +507,18 @@ class Robot:
             if audio_file is None:
                 if not self.running:
                     return None
-                # _listen_tick stops the recorder when the person leaves.
                 absent = time.time() - self._last_face_time
-                if absent > self._lost_timeout * 0.5:
-                    log.info("Person lost during listening — returning to idle.")
+                if absent > self._lost_timeout:
+                    log.info("Person lost timeout reached (%.1fs) — ending session.",
+                             absent)
                     return None
-                # Person still present — pre-speech timeout or transient mic hiccup.
-                if attempt < _MAX_LISTEN_RETRIES and self.feed.has_face:
+                # Face may have flickered — retry as long as person hasn't been
+                # absent longer than the session timeout.  Do NOT gate on
+                # self.feed.has_face — a brief detection gap must not kill the turn.
+                if absent > 0.5:
+                    log.debug("Face temporarily lost (%.1fs) — keeping session active.",
+                              absent)
+                if attempt < _MAX_LISTEN_RETRIES:
                     continue
                 log.info("No speech after all retries — returning to idle.")
                 return None
