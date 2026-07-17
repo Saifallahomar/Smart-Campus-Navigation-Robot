@@ -32,11 +32,42 @@ class Recorder:
         # Without this, the recorder blocks indefinitely when the mic threshold is
         # never crossed (too high, person too quiet, or mic not picking up audio).
         self.max_initial_wait_seconds = float(a.get("max_initial_wait_seconds", 6.0))
-        self.device = settings.devices.get("mic_device", 1)
+
+        preferred = settings.devices.get("mic_device", 1)
+        name_hint = settings.devices.get("mic_auto_detect_name", "")
+        self.device = self._pick_device(preferred, name_hint)
 
         self.available = _HAS_AUDIO and not settings.mock_mode
         if not self.available:
             log.warning("Microphone recording unavailable (mock or missing libraries).")
+
+    @staticmethod
+    def _pick_device(preferred, name_hint):
+        """Return the best available input device index (or None for system default)."""
+        if not _HAS_AUDIO:
+            return preferred
+        # Try the configured device index first.
+        if preferred is not None:
+            try:
+                info = sd.query_devices(preferred, "input")
+                log.info("Mic: using device %d — %s", preferred, info["name"])
+                return preferred
+            except Exception:
+                log.warning("Mic device %d not available — scanning by name '%s'.",
+                            preferred, name_hint)
+        # Scan all devices for one whose name contains the hint.
+        if name_hint:
+            hint = name_hint.lower()
+            try:
+                for idx, dev in enumerate(sd.query_devices()):
+                    if dev["max_input_channels"] > 0 and hint in dev["name"].lower():
+                        log.info("Mic: auto-detected '%s' at device %d.", dev["name"], idx)
+                        return idx
+            except Exception as exc:
+                log.warning("Device scan failed: %s", exc)
+        # Nothing found — let sounddevice choose the system default.
+        log.warning("Mic '%s' not found — using system default input device.", name_hint)
+        return None
 
     def record_until_silence(self, filename="voice.wav", on_tick=None):
         """
