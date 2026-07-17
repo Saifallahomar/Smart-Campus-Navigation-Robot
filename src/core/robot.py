@@ -3,13 +3,13 @@ The Robot orchestrator — the main loop that ties everything together.
 
 Conversation flow
 -----------------
-The robot listens continuously regardless of face detection:
-1. Start listening immediately on startup.
-2. When speech is heard: transcribe → answer → speak → listen again.
-3. Face detection runs in the background for the camera preview,
-   green face box, animated eye gaze, and wave detection only.
-   It does NOT gate or stop listening.
-4. A "stop" voice command or Ctrl+C shuts the robot down cleanly.
+1. Wait in idle (camera preview live) until a face is detected.
+2. Greet the person and enter a session.
+3. Inside the session: listen → transcribe → answer → speak → listen again.
+4. Brief face-detection flickers do NOT end the session — the session ends
+   only after the face has been absent for ``person_lost_timeout`` seconds
+   (default 8 s, configurable in config.json).
+5. After the session ends, return to idle and wait for the next person.
 
 Wave detection (optional, enabled in config)
 --------------------------------------------
@@ -215,8 +215,7 @@ class Robot:
         max_deg = float(servo_cfg.get("max_angle", 90)) or 90.0
         self._voice_look_frac = max(0.0, min(1.0, look_deg / max_deg))
 
-        # person_lost_timeout kept in settings for reference; not used to gate
-        # listening (robot always listens). Used by wave detection cooldown context.
+        # How long a person can be absent before the session ends (default 8 s).
         conv_cfg = settings.get('conversation') or {}
         self._lost_timeout = float(conv_cfg.get('person_lost_timeout', 8.0))
 
@@ -242,6 +241,8 @@ class Robot:
 
         try:
             while self.running:
+                if not self._wait_for_face():
+                    break
                 self._run_session()
 
         except KeyboardInterrupt:
@@ -288,18 +289,27 @@ class Robot:
 
     def _run_session(self):
         """
-        Always-on conversation loop. Listens continuously while the robot is
-        running. Face detection is NOT used to gate listening — it runs in the
-        background for the camera preview, eye tracking, and wave detection only.
-        The loop ends only on a stop word or shutdown signal.
+        Active conversation session, entered after a face is detected.
+
+        Keeps listening and answering while the person is present.
+        If no face is seen for longer than ``person_lost_timeout`` seconds
+        (default 8 s), the session ends and the robot returns to idle so it
+        can greet the next person.  Brief face-detection flickers do NOT end
+        the session early — only a sustained absence does.
         """
-        log.info("Listening loop started.")
+        log.info("Session started.")
         self._last_face_time = time.time()
 
         while self.running:
-            # Keep face timestamp fresh (used by eye tracking / wave detection).
+            # Keep face timestamp fresh.
             if self.feed.has_face:
                 self._last_face_time = time.time()
+
+            # End session only after the full grace period has elapsed.
+            absent = time.time() - self._last_face_time
+            if absent > self._lost_timeout:
+                log.info("Person absent %.1fs — returning to idle.", absent)
+                break
 
             # Wake word gate (no-op when disabled, returns True immediately).
             if not self.wakeword.wait_for_wake(on_tick=self._session_idle_tick):
@@ -317,11 +327,11 @@ class Robot:
                 self.running = False
                 break
 
-            # Friendly goodbye → say bye then keep listening.
+            # Friendly goodbye → say bye and end this session.
             if self._is_goodbye(question):
                 log.info("User said goodbye.")
                 self._farewell()
-                continue
+                break
 
             # Voice command to move the physical head servo (no AI call).
             head_dir = self._parse_head_command(question)
@@ -358,7 +368,7 @@ class Robot:
             self.face.clear_caption()
             self._render(RobotState.IDLE)
 
-        log.info("Listening loop ended.")
+        log.info("Session ended — returning to idle.")
         self._render(RobotState.IDLE)
 
     # ========================================================== face waiting
