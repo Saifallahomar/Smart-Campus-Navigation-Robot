@@ -3,7 +3,7 @@
   "mock_mode": false,
   "language": "auto",
   "devices": {
-    "mic_device": 1,
+    "mic_device": 0,
     "speaker_device": "plughw:2,0",
     "mic_auto_detect_name": "EMEET",
     "speaker_auto_detect": false
