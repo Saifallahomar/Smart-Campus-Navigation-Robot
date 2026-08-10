@@ -78,11 +78,14 @@ class Recorder:
         if not self.available:
             return None
 
-        frames = []
-        started = False
-        silence_time = 0.0
-        total_time = 0.0
-        pre_speech_time = 0.0   # time spent waiting for speech to begin
+        frames          = []
+        started         = False
+        _speech_logged  = False   # log "Speech detected" only once
+        silence_time    = 0.0
+        total_time      = 0.0
+        pre_speech_time = 0.0    # time spent waiting for speech to begin
+
+        log.info("Listening started — waiting for speech (threshold=%d).", self.voice_threshold)
 
         try:
             with sd.InputStream(
@@ -96,21 +99,28 @@ class Recorder:
                     volume = float(np.sqrt(np.mean(audio.astype(np.float32) ** 2)))
 
                     if volume > self.voice_threshold:
+                        if not _speech_logged:
+                            log.info("Speech detected — recording.")
+                            _speech_logged = True
                         started = True
                         frames.append(audio.copy())
                         silence_time = 0.0
                         total_time += self.chunk_seconds
+
                     elif started:
                         frames.append(audio.copy())
                         silence_time += self.chunk_seconds
                         total_time += self.chunk_seconds
                         if silence_time >= self.silence_to_stop:
+                            log.info("Silence detected — finishing recording (%.1fs of audio).",
+                                     total_time)
                             break
+
                     else:
-                        # Still waiting for speech to begin.
+                        # Still waiting for the person to start speaking.
                         pre_speech_time += self.chunk_seconds
                         if pre_speech_time >= self.max_initial_wait_seconds:
-                            log.info("No speech heard after %.1fs — returning to caller.",
+                            log.info("No speech detected after %.1fs — returning to idle.",
                                      pre_speech_time)
                             break
 
@@ -119,8 +129,9 @@ class Recorder:
                         break
 
                     if started and total_time >= self.max_record_seconds:
-                        log.info("Maximum recording time reached.")
+                        log.info("Maximum recording time reached (%.1fs).", total_time)
                         break
+
         except Exception as exc:
             log.error("Recording failed: %s", exc)
             return None

@@ -172,6 +172,13 @@ class Face:
             btn, btn)
         self._tour_font = pygame.font.SysFont("Arial", max(10, btn // 3), bold=True)
 
+        # ----- UWE Bristol branding -----------------------------------------
+        # Small logo badge shown at the bottom of the face zone.
+        # UWE Bristol brand red: #A8132C
+        self._uwe_color = (168, 19, 44)
+        logo_size = max(10, int(self.face_rect.height * 0.055))
+        self._uwe_font = pygame.font.SysFont("Arial", logo_size, bold=True)
+
         # ----- Animation state ----------------------------------------------
         self._t0              = time.time()
         self._next_blink      = time.time() + random.uniform(2, 5)
@@ -427,6 +434,8 @@ class Face:
         mouth_y = r.top + int(r.height * 0.80) + int(bob)
         self._draw_mouth(state_value, cx, mouth_y, eye_rx, int(r.height * 0.18), now)
 
+        self._draw_uwe_logo()
+
     def _draw_caption_zone(self):
         """Bottom zone: You / Robot text and status label."""
         r = self.caption_rect
@@ -478,6 +487,7 @@ class Face:
         self._draw_mouth(state_value, cx, mouth_y, eye_rx, int(r.height * 0.12), now)
 
         self._draw_status_badge(state_value)
+        self._draw_uwe_logo()
 
     def _draw_captions_landscape(self):
         r   = self.caption_rect
@@ -792,6 +802,23 @@ class Face:
         if cur:
             lines.append(cur)
         return lines or [""]
+
+    def _draw_uwe_logo(self):
+        """Small UWE Bristol red badge in the bottom of the face zone."""
+        r    = self.face_rect
+        surf = self._uwe_font.render("UWE Bristol", True, (255, 255, 255))
+        sw, sh = surf.get_size()
+        pad_x, pad_y = max(4, int(sw * 0.12)), max(2, int(sh * 0.20))
+        bw = sw + pad_x * 2
+        bh = sh + pad_y * 2
+        bx = r.x + (r.width - bw) // 2
+        by = r.bottom - bh - max(4, int(r.height * 0.025))
+        try:
+            pygame.draw.rect(self.screen, self._uwe_color,
+                             (bx, by, bw, bh), border_radius=bh // 2)
+        except TypeError:
+            pygame.draw.rect(self.screen, self._uwe_color, (bx, by, bw, bh))
+        self.screen.blit(surf, (bx + pad_x, by + pad_y))
 
     # --------------------------------------------------------------- cleanup
     def close(self):

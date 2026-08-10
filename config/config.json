@@ -12,8 +12,10 @@
     "sample_rate": 16000,
     "chunk_seconds": 0.2,
     "voice_threshold": 500,
-    "silence_to_stop": 0.9,
-    "max_record_seconds": 10,
+    "_silence_comment": "How many seconds of silence after speech ends before the recording stops. 2.0s gives the user time to pause naturally mid-sentence.",
+    "silence_to_stop": 2.0,
+    "max_record_seconds": 15,
+    "_wait_comment": "How long to wait for the user to START speaking before giving up.",
     "max_initial_wait_seconds": 6.0
   },
   "vision": {
