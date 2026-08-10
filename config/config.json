@@ -85,6 +85,13 @@
     "_comment": "Optional text-only log of questions and answers for improving the robot. Logs to logs/questions.csv. Never logs audio, images, faces, or personal data.",
     "enabled": true
   },
+  "arduino": {
+    "_comment": "Arduino Mega motor controller connected via USB serial.",
+    "port": "/dev/ttyACM0",
+    "baud": 9600,
+    "_password_comment": "Spoken password required before starting the campus tour.",
+    "tour_password": "start"
+  },
   "servo": {
     "_comment": "Single 180-degree pan servo for the head. It moves ONLY on a voice command (e.g. 'look left', 'look forward') — it does NOT auto-follow the camera. Signal -> GPIO 18 (physical pin 12), power -> external 5V, ground -> shared GND. Set enabled to false if no servo is connected.",
     "enabled": true,

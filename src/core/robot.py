@@ -44,6 +44,7 @@ from src.core.states import RobotState
 from src.hardware.head_controller import build_head_controller
 from src.ui.face import Face
 from src.utils.logging_setup import get_logger
+from src.hardware.arduino import ArduinoController
 from src.vision.camera import Camera, CameraFeed
 from src.vision.tracker import FaceTracker
 from src.vision.wave import WaveDetector
@@ -160,6 +161,59 @@ VISION_FAILED = {
     "chinese": "抱歉，我现在看不清楚。",
 }
 
+# --- Arduino voice commands --------------------------------------------------
+#
+# These are checked BEFORE the AI, exactly like the head-servo commands.
+# If any phrase matches the user's question, the robot performs the action
+# directly without calling OpenAI.
+
+ARM_RUN_PHRASES = [
+    # English — giving / fetching
+    "give me", "hand me", "pass me", "get me", "fetch me",
+    "can i have", "can you give", "can you get",
+    "start the arm", "run the arm", "use the arm", "activate the arm",
+    "start arm", "run arm",
+    # Common demo item
+    "chocolate", "give me chocolate",
+    # Arabic
+    "أعطني", "ناولني", "أحضر لي",
+    # French
+    "donne-moi", "passe-moi", "apporte-moi",
+]
+
+ARM_HOME_PHRASES = [
+    "arm home", "home the arm", "retract the arm", "put the arm away",
+    "home arm", "reset arm",
+]
+
+MOVE_FORWARD_PHRASES = [
+    "move forward", "go forward", "drive forward", "move ahead", "go ahead",
+    "تحرك للأمام", "avance", "avancer",
+]
+
+MOVE_BACKWARD_PHRASES = [
+    "move backward", "go backward", "reverse", "move back", "go back",
+    "back up",
+    "تحرك للخلف", "recule", "reculer",
+]
+
+TOUR_PHRASES = [
+    "start the tour", "begin the tour", "give me a tour",
+    "take me on a tour", "show me around", "start tour",
+    "campus tour", "give a tour",
+]
+
+# What the robot says when it runs the arm.
+ARM_REPLY = {
+    "english": "Here you go.",
+    "arabic":  "تفضل.",
+    "french":  "Voilà pour vous.",
+    "chinese": "给您。",
+}
+
+# What the robot says when the obstacle is detected.
+OBSTACLE_MSG = "Please clear the way so I can continue safely."
+
 # How long to hold the ERROR face before returning to idle.
 ERROR_HOLD_SECS = 2.0
 
@@ -199,6 +253,13 @@ class Robot:
             min_motion_frames=int(wave_cfg.get('min_motion_frames', 8)),
             cooldown=float(wave_cfg.get('cooldown_seconds', 3.0)),
         )
+
+        # Arduino motor controller (falls back to mock if not connected).
+        self.arduino = ArduinoController(settings)
+        self.arduino.on_obstacle = self._on_obstacle
+        # Flag set by the Arduino reader thread when an obstacle is reported.
+        # The main loop reads it and speaks the message safely from its thread.
+        self._obstacle_pending = False
 
         self.q_logger    = QuestionLogger(settings)
         self.messages    = self.knowledge.build_messages()
@@ -311,6 +372,25 @@ class Robot:
                 log.info("Person absent %.1fs — returning to idle.", absent)
                 break
 
+            # --- Obstacle message (set by Arduino reader thread) ---------------
+            if self._obstacle_pending:
+                self._obstacle_pending = False
+                log.info("Speaking obstacle message.")
+                self.face.set_caption(robot=OBSTACLE_MSG)
+                self._speak(OBSTACLE_MSG)
+                self.face.clear_caption()
+                self._render(RobotState.IDLE)
+                continue
+
+            # --- Movement pause ------------------------------------------------
+            # While the robot body is physically moving (but NOT during a tour),
+            # keep the camera live but skip voice listening until Arduino sends DONE.
+            if self.arduino.is_moving and not self.arduino.is_touring:
+                self.face.set_status("Robot is moving...")
+                self._render(RobotState.IDLE)
+                time.sleep(0.1)
+                continue
+
             # Wake word gate (no-op when disabled, returns True immediately).
             if not self.wakeword.wait_for_wake(on_tick=self._session_idle_tick):
                 continue
@@ -333,7 +413,40 @@ class Robot:
                 self._farewell()
                 break
 
-            # Voice command to move the physical head servo (no AI call).
+            # --- Arduino voice commands (handled locally, no AI needed) --------
+
+            # Tour request → ask for spoken password.
+            if self._is_tour_command(question):
+                log.info("Tour command heard.")
+                self._handle_tour_request()
+                continue
+
+            # Arm run → give the item.
+            if self._is_arm_run(question):
+                log.info("Arm run command.")
+                self._handle_arm_run(question)
+                continue
+
+            # Arm home → retract.
+            if self._is_arm_home(question):
+                log.info("Arm home command.")
+                self.arduino.home_arm()
+                self._render(RobotState.IDLE)
+                continue
+
+            # Move forward.
+            if self._is_move_forward(question):
+                log.info("Move forward command.")
+                self._handle_move("forward", question)
+                continue
+
+            # Move backward.
+            if self._is_move_backward(question):
+                log.info("Move backward command.")
+                self._handle_move("backward", question)
+                continue
+
+            # --- Voice command to move the physical head servo (no AI call) ----
             head_dir = self._parse_head_command(question)
             if head_dir:
                 log.info("Head command: %s", head_dir)
@@ -435,6 +548,89 @@ class Robot:
         self.face.clear_caption()
         self._hold(RobotState.HAPPY, 0.8)
         self._render(RobotState.IDLE)
+
+    # ================================================== Arduino handlers
+
+    def _on_obstacle(self):
+        """Called by the Arduino reader thread when an obstacle is detected."""
+        self._obstacle_pending = True   # main thread will speak it safely
+
+    def _handle_tour_request(self):
+        """Ask for a spoken password; if correct, send TOUR to the Arduino."""
+        prompt = "Please say the tour password to start."
+        self.face.set_caption(robot=prompt)
+        self._speak(prompt)
+        self.face.clear_caption()
+
+        password = self._listen_and_transcribe()
+        if password is None:
+            return
+
+        if password.strip().lower() == self.arduino.tour_password.strip().lower():
+            msg = "Starting the campus tour! Please follow me."
+            self.face.set_caption(robot=msg)
+            self._speak(msg)
+            self.face.clear_caption()
+            self.arduino.start_tour()
+            log.info("Tour started.")
+        else:
+            msg = "Sorry, that password is incorrect."
+            self.face.set_caption(robot=msg)
+            self._speak(msg)
+            self.face.clear_caption()
+            self._render(RobotState.IDLE)
+
+    def _handle_arm_run(self, question):
+        """Send ARM_RUN to the Arduino and say 'Here you go.'"""
+        self.arduino.run_arm()
+        lang = detect_language(question)
+        msg  = ARM_REPLY.get(lang, ARM_REPLY["english"])
+        self.face.set_caption(robot=msg)
+        self._speak(msg)
+        self.face.clear_caption()
+        self._render(RobotState.IDLE)
+
+    def _handle_move(self, direction, question):
+        """Send a movement command and announce it."""
+        if direction == "forward":
+            self.arduino.move_forward()
+            msg = "Moving forward."
+        else:
+            self.arduino.move_backward()
+            msg = "Moving backward."
+        self.face.set_caption(robot=msg)
+        self._speak(msg)
+        self.face.clear_caption()
+        self._render(RobotState.IDLE)
+
+    # ================================================== Arduino phrase checks
+
+    @staticmethod
+    def _is_arm_run(text):
+        t = text.lower()
+        return any(p in t for p in ARM_RUN_PHRASES)
+
+    @staticmethod
+    def _is_arm_home(text):
+        t = text.lower()
+        return any(p in t for p in ARM_HOME_PHRASES)
+
+    @staticmethod
+    def _is_move_forward(text):
+        t = text.lower()
+        return any(p in t for p in MOVE_FORWARD_PHRASES)
+
+    @staticmethod
+    def _is_move_backward(text):
+        t = text.lower()
+        return any(p in t for p in MOVE_BACKWARD_PHRASES)
+
+    @staticmethod
+    def _is_tour_command(text):
+        t = text.lower()
+        return any(p in t for p in TOUR_PHRASES)
+
+    # =========================================================== helpers
 
     def _session_idle_tick(self):
         """
@@ -644,6 +840,9 @@ class Robot:
                 log.info("Safe shutdown requested.")
                 self.running = False
                 self._do_shutdown = True
+            elif event == "tour_requested":
+                log.info("Tour button pressed.")
+                self._handle_tour_request()
         return self.running
 
     def _trim_history(self):
@@ -746,6 +945,7 @@ class Robot:
         self._cleaned_up = True
         log.info("Cleaning up...")
         for component, name in [
+            (self.arduino,  "arduino"),
             (self.player,   "player"),
             (self.feed,     "camera feed"),
             (self.camera,   "camera"),

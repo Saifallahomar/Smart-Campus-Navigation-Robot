@@ -158,13 +158,19 @@ class Face:
             self.font_label   = pygame.font.SysFont("Arial", max(12, int(cap_h_ref * 0.15)),    bold=True)
             self.font_overlay = pygame.font.SysFont("Arial", max(13, int(fh_ref * 0.056)))
 
-        # ----- Shutdown button (bottom-right of caption area) ---------------
+        # ----- Shutdown + Tour buttons (bottom-right of caption area) ---------
         btn    = int(self.W * 0.12)
         margin = int(btn * 0.35)
         self._shutdown_rect = pygame.Rect(
             self.W - btn - margin,
             self.H - btn - margin,
             btn, btn)
+        # Tour button sits to the left of the shutdown button.
+        self._tour_btn_rect = pygame.Rect(
+            self.W - 2 * (btn + margin),
+            self.H - btn - margin,
+            btn, btn)
+        self._tour_font = pygame.font.SysFont("Arial", max(10, btn // 3), bold=True)
 
         # ----- Animation state ----------------------------------------------
         self._t0              = time.time()
@@ -258,6 +264,11 @@ class Face:
             elif e.type == pygame.MOUSEBUTTONDOWN:
                 if self._shutdown_rect.collidepoint(e.pos):
                     events.append("shutdown")
+                elif self._tour_btn_rect.collidepoint(e.pos):
+                    events.append("tour_requested")
+            elif e.type == pygame.KEYDOWN:
+                if e.key == pygame.K_t:
+                    events.append("tour_requested")
         return events
 
     # --------------------------------------------------------------- render
@@ -744,6 +755,14 @@ class Face:
                            max(4, int(rad * 0.45)))
         pygame.draw.line(  self.screen, theme.SHUTDOWN,
                            (cx, cy - int(rad * 0.50)), (cx, cy), 3)
+        # Tour button — small green circle labelled "TOUR"
+        tr = self._tour_btn_rect
+        tcx, tcy = tr.center
+        trad = tr.width // 2
+        pygame.draw.circle(self.screen, (0, 100, 0),   (tcx, tcy), trad)
+        pygame.draw.circle(self.screen, (0, 200, 80),  (tcx, tcy), trad, 3)
+        lbl = self._tour_font.render("TOUR", True, (0, 220, 100))
+        self.screen.blit(lbl, lbl.get_rect(center=(tcx, tcy)))
 
     # ---------------------------------------------- caption helpers (shared)
     def _blit_labeled(self, label, text, x, y, max_w, color, max_lines=2):
