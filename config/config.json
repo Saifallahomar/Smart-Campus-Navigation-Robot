@@ -92,6 +92,11 @@
     "_password_comment": "Spoken password required before starting the campus tour.",
     "tour_password": "start"
   },
+  "phone_server": {
+    "_comment": "Web-based phone motor control — automatically started by run.py. Open http://<Pi-IP>:5000 on your phone. Shows live camera and D-pad controls. Set enabled to false to disable.",
+    "enabled": true,
+    "port": 5000
+  },
   "servo": {
     "_comment": "Single 180-degree pan servo for the head. It moves ONLY on a voice command (e.g. 'look left', 'look forward') — it does NOT auto-follow the camera. Signal -> GPIO 18 (physical pin 12), power -> external 5V, ground -> shared GND. Set enabled to false if no servo is connected.",
     "enabled": true,

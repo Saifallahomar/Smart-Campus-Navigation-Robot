@@ -45,6 +45,7 @@ from src.hardware.head_controller import build_head_controller
 from src.ui.face import Face
 from src.utils.logging_setup import get_logger
 from src.hardware.arduino import ArduinoController
+from src.core.phone_server import PhoneControlServer
 from src.vision.camera import Camera, CameraFeed
 from src.vision.tracker import FaceTracker
 from src.vision.wave import WaveDetector
@@ -261,6 +262,16 @@ class Robot:
         # The main loop reads it and speaks the message safely from its thread.
         self._obstacle_pending = False
 
+        # Phone motor control web server — shares the same arduino and camera.
+        # Started in run() after the camera feed is live.
+        phone_cfg = settings.get("phone_server") or {}
+        self._phone_server_enabled = bool(phone_cfg.get("enabled", True))
+        self.phone_server = PhoneControlServer(
+            arduino=self.arduino,
+            camera_feed=self.feed,
+            port=int(phone_cfg.get("port", 5000)),
+        )
+
         self.q_logger    = QuestionLogger(settings)
         self.messages    = self.knowledge.build_messages()
         self.state       = RobotState.IDLE
@@ -295,6 +306,10 @@ class Robot:
 
         self.camera.start()
         self.feed.start()      # background thread keeps camera preview live
+
+        # Start phone control web server — runs in background, shares arduino + camera.
+        if self._phone_server_enabled:
+            self.phone_server.start()
 
         # One-time, friendly checks so problems are visible instead of silent.
         self._startup_checks()

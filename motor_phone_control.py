@@ -1,16 +1,23 @@
 """
-Motor phone control — standalone web server for remote control via phone/browser.
+Motor phone control — STANDALONE backup web server.
+
+NOTE: This file is kept as a standalone fallback.
+      run.py now starts the phone control server automatically in the background,
+      so you do NOT need to run this file separately when using the full robot.
+
+      Only run this file if you want motor control WITHOUT the AI/face robot
+      (e.g. for testing motors with no camera attached).
 
 Run with:
     python motor_phone_control.py
 
 Then open  http://<Pi-IP-address>:5000  on your phone.
 
-This is SEPARATE from run.py.  Do NOT run both at the same time — they would
-both try to open the same Arduino serial port (/dev/ttyACM0) and one would fail.
+Do NOT run this at the same time as run.py — they would both try to open the
+same Arduino serial port (/dev/ttyACM0) and one would fail.
 
-  run.py                 = AI voice assistant + motor commands via voice
-  motor_phone_control.py = manual phone/browser D-pad control only
+  run.py                 = AI robot + phone control server (everything, recommended)
+  motor_phone_control.py = standalone motor-only control (backup / testing)
 
 Requires Flask:
     pip install flask
