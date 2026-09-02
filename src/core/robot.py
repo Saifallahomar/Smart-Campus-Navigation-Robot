@@ -243,6 +243,11 @@ OBSTACLE_MSG = "Please clear the way so I can continue safely."
 # How long to hold the ERROR face before returning to idle.
 ERROR_HOLD_SECS = 2.0
 
+# Minimum seconds between verbal greetings.
+# Prevents the robot from saying "Hi there!" again when the face-detection
+# flickers or the person steps back briefly and then returns.
+GREETING_COOLDOWN_SECS = 25.0
+
 # Max number of extra recording attempts when no audio is captured (mic hiccup).
 _MAX_LISTEN_RETRIES = 2
 
@@ -254,6 +259,7 @@ class Robot:
         self._do_shutdown  = False
         self._cleaned_up   = False
         self._last_face_time = 0.0   # tracks when a face was last seen in a session
+        self._last_greet_time = 0.0  # tracks when the robot last spoke a verbal greeting
 
         self.voice_path  = str(settings.project_root / "voice.wav")
         self.answer_path = str(settings.project_root / "answer.wav")
@@ -579,13 +585,20 @@ class Robot:
         else:
             self._hold(RobotState.FACE_DETECTED, 0.4)
 
-        # Always greet verbally — signals to the person that the robot is ready.
-        self._proactive_greet()
+        # Only greet verbally if enough time has passed since the last greeting.
+        # This prevents the robot from saying "Hi there!" repeatedly when face
+        # detection flickers or the person steps back for a moment.
+        since = time.time() - self._last_greet_time
+        if since >= GREETING_COOLDOWN_SECS:
+            self._proactive_greet()
+        else:
+            log.info("Greeting cooldown active (%.0fs since last) — skipping verbal greeting.", since)
 
     # ========================================================= helpers
 
     def _proactive_greet(self):
-        """Friendly greeting triggered by a detected wave."""
+        """Friendly verbal greeting when a new person is detected."""
+        self._last_greet_time = time.time()
         msg = "Hi there! How can I help you today?"
         self.face.set_caption(robot=msg)
         self._speak(msg)
