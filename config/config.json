@@ -71,6 +71,8 @@
   "conversation": {
     "_comment": "How long the robot stays in conversation mode after the person stops talking or leaves.",
     "person_lost_timeout": 8,
+    "_grace_comment": "Guaranteed seconds after the robot finishes speaking during which the session stays alive even if the camera cannot see a face. Visitors look at the screen or turn slightly while thinking of a follow-up, and frontal-face detection loses them. Raise this if the robot still sleeps too early.",
+    "post_answer_grace_seconds": 7,
     "_max_session_comment": "Set max_session_seconds to a number (e.g. 300) to limit session length, or leave null for unlimited.",
     "max_session_seconds": null,
     "farewell_message": "Bye! Have a great day!"

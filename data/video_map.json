@@ -1,19 +1,19 @@
 {
-  "_comment": "Navigation video map. Add new routes here without touching Python code. 'keywords' are matched against the user's question (case-insensitive whole-word match). 'video' is relative to the project root.",
+  "_comment": "Navigation video map. Add new routes here without touching Python code. Keywords are matched against the visitor's question after both sides are normalised (lowercased, punctuation replaced by spaces), and each keyword must appear as a whole word. Do NOT add trailing spaces inside a keyword. 'video' is relative to the project root.",
   "routes": [
     {
       "label": "library",
-      "keywords": ["library", "b block"],
+      "keywords": ["library", "d block", "frenchay library", "the library"],
       "video": "data/videos/z_to_library.mp4"
     },
     {
       "label": "students union",
-      "keywords": ["student union", "students union", "students' union", "the su", "su "],
+      "keywords": ["student union", "students union", "su", "u block", "the su"],
       "video": "data/videos/z_to_su.mp4"
     },
     {
       "label": "x block",
-      "keywords": ["x block", "xblock", "x-block"],
+      "keywords": ["x block", "xblock", "business school", "bristol business school"],
       "video": "data/videos/z_to_xblock.mp4"
     }
   ]

@@ -24,6 +24,7 @@ All hardware is cleaned up on exit, even on crash or Ctrl+C.
 import atexit
 import json
 import os
+import re
 import signal
 import subprocess
 import time
@@ -226,8 +227,53 @@ _NAV_INTENT_PHRASES = [
     # Arabic
     "أين", "كيف أصل", "كيف أذهب", "دلني على",
     # French
-    "où est", "comment aller", "montrez-moi", "comment je peux aller",
+    "où est", "comment aller", "montrez moi", "comment je peux aller",
 ]
+
+# Extra intent patterns that are NOT simple contiguous substrings, e.g.
+# "can you tell me where the library is" — "where ... is" is split by the
+# destination name, so a plain "where is" substring test misses it.
+_NAV_INTENT_REGEXES = [
+    re.compile(r"\bwhere\b.{0,40}\bis\b"),      # "where the library is"
+    re.compile(r"\bhow\b.{0,20}\bget to\b"),    # "how would i get to"
+    re.compile(r"\bwhich way\b"),               # "which way to the su"
+    re.compile(r"\bgo to\b"),                   # "i want to go to x block"
+]
+
+# Punctuation stripper for matching. Whisper transcripts almost always end with
+# "?" or "." — without this, " library " never matches " library? ".
+_PUNCT_RE = re.compile(r"[^\w\s]", re.UNICODE)
+_SPACE_RE = re.compile(r"\s+", re.UNICODE)
+
+
+def _normalize_for_match(text: str) -> str:
+    """
+    Lowercase, replace punctuation with spaces, collapse runs of whitespace and
+    pad with a single leading/trailing space.
+
+    The padding lets short keywords be matched as whole words: " su " will match
+    "where is the su" but not "there is an issue".
+    """
+    t = _PUNCT_RE.sub(" ", (text or "").lower())
+    t = _SPACE_RE.sub(" ", t).strip()
+    return " " + t + " "
+
+
+# Per-turn instruction appended to the AI request so the spoken answer always
+# matches what the screen actually does. Never stored in conversation history.
+_NAV_HINT_VIDEO_WILL_PLAY = (
+    "[SYSTEM NOTE FOR THIS TURN ONLY: A route video for the destination the "
+    "visitor just asked about IS available and WILL start playing full-screen "
+    "on your display as you speak. Tell them to watch the screen for the route, "
+    "and give one short sentence of walking directions as well. Keep it brief.]"
+)
+
+_NAV_HINT_NO_VIDEO = (
+    "[SYSTEM NOTE FOR THIS TURN ONLY: No route video will be shown for this "
+    "question. Do NOT mention videos, screens, or 'watch the screen', and do "
+    "NOT say you cannot show a video — simply answer the question normally "
+    "with directions or information in words.]"
+)
 
 # What the robot says when it runs the arm.
 ARM_REPLY = {
@@ -260,6 +306,7 @@ class Robot:
         self._cleaned_up   = False
         self._last_face_time = 0.0   # tracks when a face was last seen in a session
         self._last_greet_time = 0.0  # tracks when the robot last spoke a verbal greeting
+        self._answer_grace_until = 0.0  # guaranteed listening window after speaking
 
         self.voice_path  = str(settings.project_root / "voice.wav")
         self.answer_path = str(settings.project_root / "answer.wav")
@@ -325,6 +372,11 @@ class Robot:
         # How long a person can be absent before the session ends (default 8 s).
         conv_cfg = settings.get('conversation') or {}
         self._lost_timeout = float(conv_cfg.get('person_lost_timeout', 8.0))
+        # Guaranteed window after the robot finishes speaking during which the
+        # session stays alive even if the camera cannot see a face. People look
+        # at the screen or stand at an angle after an answer, and the frontal
+        # face detector loses them — without this the robot sleeps mid-chat.
+        self._post_answer_grace = float(conv_cfg.get('post_answer_grace_seconds', 7.0))
 
         atexit.register(self.cleanup)
         for sig in ("SIGINT", "SIGTERM"):
@@ -378,6 +430,20 @@ class Robot:
         if not self.settings.mock_mode and not self.player.aplay_available():
             log.warning("Speaker tool 'aplay' missing — install alsa-utils for sound.")
 
+        # Navigation videos — report exactly which routes are usable, so a
+        # missing file is obvious at boot instead of surfacing mid-conversation.
+        if self._nav_videos:
+            ok, missing = [], []
+            for route in self._nav_videos:
+                label = route.get("label", "?")
+                path  = self.settings.project_root / route.get("video", "")
+                (ok if path.exists() else missing).append(label)
+            if ok:
+                log.info("Navigation videos ready: %s", ", ".join(ok))
+            if missing:
+                log.warning("Navigation videos MISSING (these routes will be "
+                            "answered with words only): %s", ", ".join(missing))
+
         # AI / internet. If it's not ready the robot stays open and recovers
         # automatically once the key/internet is sorted, so just notify.
         if not self.assistant.ready:
@@ -414,6 +480,14 @@ class Robot:
         while self.running:
             # Keep face timestamp fresh.
             if self.feed.has_face:
+                self._last_face_time = time.time()
+
+            # Guaranteed post-answer window: right after the robot speaks, hold
+            # the session open even with no face detected. Visitors look at the
+            # screen or turn slightly while thinking of a follow-up, and the
+            # frontal-face detector drops them — this stops the robot sleeping
+            # mid-conversation.
+            if time.time() < self._answer_grace_until:
                 self._last_face_time = time.time()
 
             # End session only after the full grace period has elapsed.
@@ -521,15 +595,18 @@ class Robot:
 
             # Normal Q&A turn.
             log.info("Thinking...")
-            answer, is_fallback = self._get_answer(question)
+
+            # Decide the video FIRST, then tell the AI what will actually
+            # happen. Deciding after the answer let the AI promise a video that
+            # never played (or deny one that would have).
+            nav_video = self._find_nav_video(question)
+
+            answer, is_fallback = self._get_answer(question, nav_video=nav_video)
             self.q_logger.record(detect_language(question), question, answer,
                                  unsure=is_fallback)
             log.info("Speaking: %s", answer[:80])
             self.face.set_caption(robot=answer)
 
-            # Check for a navigation video BEFORE speaking so we can start
-            # both the audio and the video at the same time.
-            nav_video = self._find_nav_video(question)
             if nav_video:
                 self._speak_with_nav_video(answer, nav_video)
             else:
@@ -762,8 +839,14 @@ class Robot:
         log.info("No speech after all retries — returning to idle.")
         return None
 
-    def _get_answer(self, question):
-        """Return (answer_text, is_fallback). Never raises."""
+    def _get_answer(self, question, nav_video=None):
+        """
+        Return (answer_text, is_fallback). Never raises.
+
+        ``nav_video`` is the already-decided route video for this turn (or None).
+        A short system note is sent with THIS request only — not stored in
+        history — so the spoken answer always matches what the screen does.
+        """
         # Fast local FAQ (off by default).
         faq = self.knowledge.match_faq(question)
         if faq is not None:
@@ -774,7 +857,17 @@ class Robot:
         self.messages.append({"role": "user", "content": question})
         self._trim_history()
 
-        answer = self.assistant.chat(self.messages)
+        # Build the request without mutating stored history.
+        if nav_video:
+            request = self.messages + [{"role": "system",
+                                        "content": _NAV_HINT_VIDEO_WILL_PLAY}]
+        elif self._nav_videos:
+            request = self.messages + [{"role": "system",
+                                        "content": _NAV_HINT_NO_VIDEO}]
+        else:
+            request = self.messages
+
+        answer = self.assistant.chat(request)
 
         if answer is None:
             # Network / API failure — drop unanswered turn to keep history clean.
@@ -790,8 +883,27 @@ class Robot:
         log.info("Robot: %s", answer)
         return answer, self.assistant.is_fallback(answer)
 
+    def _begin_answer_grace(self):
+        """
+        Open the guaranteed listening window that starts when the robot stops
+        speaking. During it the session ignores face-detection dropouts, so the
+        visitor always gets time to ask a follow-up.
+        """
+        self._answer_grace_until = time.time() + self._post_answer_grace
+
     def _speak(self, text):
-        """Generate and play TTS audio while animating the mouth."""
+        """
+        Generate and play TTS audio while animating the mouth.
+
+        Whatever happens inside, the post-answer grace window always opens on
+        the way out, so every spoken reply is followed by the same patient wait.
+        """
+        try:
+            self._speak_impl(text)
+        finally:
+            self._begin_answer_grace()
+
+    def _speak_impl(self, text):
         self._render(RobotState.SPEAKING)
 
         audio_out = self.assistant.synthesize(text, self.answer_path)
@@ -808,8 +920,9 @@ class Robot:
             return
 
         while self.player.is_playing() and self.running:
-            if self.feed.has_face:
-                self._last_face_time = time.time()
+            # The robot is mid-sentence to a visitor who is standing right
+            # there, so hold presence even if the frontal-face detector blinks.
+            self._last_face_time = time.time()
             self._refresh_preview()
             self._pump()
             self.face.render(RobotState.SPEAKING)
@@ -1010,33 +1123,52 @@ class Robot:
     def _find_nav_video(self, question: str):
         """
         Return the video path if this is a directions query for a known
-        destination, otherwise return None.
+        destination whose video file actually exists, otherwise None.
 
-        Two conditions must both be true:
-          1. A direction-intent phrase is present (e.g. "where is", "show me").
+        Three conditions must all be true:
+          1. A direction-intent phrase or pattern is present
+             (e.g. "where is", "show me", "where ... is", "which way").
           2. A destination keyword from video_map.json appears as a whole word.
+          3. The video file exists on disk.
 
-        This prevents "what time does the library close?" from triggering a
-        video even though it names a place.
+        Condition 1 prevents "what time does the library close?" from playing a
+        video. Condition 3 guarantees the robot never promises a video it cannot
+        actually show — the result of this call is what the AI is told.
+
+        Both the question and the keywords are normalised (lowercased, punctuation
+        replaced by spaces) before matching, so "Where is the library?" matches
+        the keyword "library" despite the trailing question mark.
         """
         if not self._nav_videos:
             return None
 
-        q = question.lower()
-        has_intent = any(phrase in q for phrase in _NAV_INTENT_PHRASES)
+        q_norm = _normalize_for_match(question)
+
+        has_intent = (
+            any(_normalize_for_match(p).strip() in q_norm for p in _NAV_INTENT_PHRASES)
+            or any(rx.search(q_norm) for rx in _NAV_INTENT_REGEXES)
+        )
         if not has_intent:
             return None
 
-        # Pad with spaces so whole-word matching works for short keywords like
-        # "su" — avoids false matches inside words like "issue" or "visual".
-        q_padded = " " + q.strip() + " "
         for route in self._nav_videos:
             keywords  = route.get("keywords", [])
             label     = route.get("label", "?")
             video_rel = route.get("video", "")
-            if any((" " + kw.strip() + " ") in q_padded for kw in keywords):
-                log.info("Navigation video matched: %s", label)
-                return video_rel
+
+            # Keywords are normalised the same way and kept space-padded so they
+            # only match whole words ("su" must not match inside "issue").
+            if not any(_normalize_for_match(kw) in q_norm for kw in keywords):
+                continue
+
+            full_path = self.settings.project_root / video_rel
+            if not full_path.exists():
+                log.warning("Route '%s' matched but video file is missing: %s "
+                            "— answering with words only.", label, full_path)
+                return None
+
+            log.info("Navigation video matched: %s -> %s", label, video_rel)
+            return video_rel
 
         return None
 
@@ -1079,8 +1211,7 @@ class Robot:
 
         # Video ended — wait for audio if it's still running.
         while self.player.is_playing() and self.running:
-            if self.feed.has_face:
-                self._last_face_time = time.time()
+            self._last_face_time = time.time()
             self._refresh_preview()
             self._pump()
             self.face.render(RobotState.IDLE)
@@ -1088,17 +1219,25 @@ class Robot:
         # Brief pause so speaker echo doesn't bleed into the next recording.
         self._hold(RobotState.IDLE, 0.35)
 
+        # Same patient wait as any other answer — the visitor has just watched a
+        # route and very often asks a follow-up straight after.
+        self._begin_answer_grace()
+
     def _nav_video_tick(self) -> bool:
         """
         Called by VideoPlayer after each frame is pushed into face via set_preview.
 
-        Renders the frame full-screen (replacing the normal face + camera layout),
-        processes pygame events, and refreshes the face-presence timer.
+        Renders the frame full-screen (replacing the normal face + camera layout)
+        and processes pygame events so the shutdown button stays responsive.
+
+        Presence is held for the whole video: the visitor is watching the screen,
+        which is exactly when the frontal-face detector fails. Without this the
+        session could time out during a long route video and drop the person the
+        moment it finished.
 
         Returns True to stop the video (shutdown button pressed or robot stopping).
         """
-        if self.feed.has_face:
-            self._last_face_time = time.time()
+        self._last_face_time = time.time()
         self.face.render_fullscreen_frame()
         self._pump()
         return not self.running   # True = stop video
