@@ -1,0 +1,20 @@
+{
+  "_comment": "Navigation video map. Add new routes here without touching Python code. 'keywords' are matched against the user's question (case-insensitive whole-word match). 'video' is relative to the project root.",
+  "routes": [
+    {
+      "label": "library",
+      "keywords": ["library", "b block"],
+      "video": "data/videos/z_to_library.mp4"
+    },
+    {
+      "label": "students union",
+      "keywords": ["student union", "students union", "students' union", "the su", "su "],
+      "video": "data/videos/z_to_su.mp4"
+    },
+    {
+      "label": "x block",
+      "keywords": ["x block", "xblock", "x-block"],
+      "video": "data/videos/z_to_xblock.mp4"
+    }
+  ]
+}

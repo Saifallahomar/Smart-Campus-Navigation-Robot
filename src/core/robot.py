@@ -22,6 +22,7 @@ All hardware is cleaned up on exit, even on crash or Ctrl+C.
 """
 
 import atexit
+import json
 import os
 import signal
 import subprocess
@@ -46,6 +47,7 @@ from src.ui.face import Face
 from src.utils.logging_setup import get_logger
 from src.hardware.arduino import ArduinoController
 from src.core.phone_server import PhoneControlServer
+from src.ui.video_player import VideoPlayer
 from src.vision.camera import Camera, CameraFeed
 from src.vision.tracker import FaceTracker
 from src.vision.wave import WaveDetector
@@ -204,6 +206,16 @@ TOUR_PHRASES = [
     "campus tour", "give a tour",
 ]
 
+# Words/phrases that signal the user is asking for directions.
+# At least one must appear for a navigation video to be shown.
+# This prevents e.g. "what time does the library close?" from triggering a video.
+_NAV_INTENT_PHRASES = [
+    "where is", "where's", "how do i get", "how to get",
+    "show me", "directions to", "route to", "way to",
+    "how do i find", "how to find", "take me to",
+    "navigate to", "walk to", "get to the", "find the",
+]
+
 # What the robot says when it runs the arm.
 ARM_REPLY = {
     "english": "Here you go.",
@@ -271,6 +283,10 @@ class Robot:
             camera_feed=self.feed,
             port=int(phone_cfg.get("port", 5000)),
         )
+
+        # Navigation video player — shows route videos in the preview area.
+        self.video_player  = VideoPlayer(settings.project_root)
+        self._nav_videos   = self._load_nav_videos()
 
         self.q_logger    = QuestionLogger(settings)
         self.messages    = self.knowledge.build_messages()
@@ -494,6 +510,10 @@ class Robot:
             self._speak(answer)
             self._post_expression(question, is_fallback)
             self.face.clear_caption()
+
+            # Navigation video: show route video if the question was directional.
+            self._maybe_play_nav_video(question)
+
             self._render(RobotState.IDLE)
 
         log.info("Session ended — returning to idle.")
@@ -939,6 +959,77 @@ class Robot:
         self._speak(description)
         self.face.clear_caption()
         self._render(RobotState.IDLE)
+
+    # ====================================================== navigation videos
+
+    def _load_nav_videos(self) -> list:
+        """Load navigation video routes from data/video_map.json."""
+        path = self.settings.data_dir / "video_map.json"
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            routes = data.get("routes", [])
+            log.info("Loaded %d navigation video route(s).", len(routes))
+            return routes
+        except FileNotFoundError:
+            log.info("video_map.json not found — navigation videos disabled.")
+            return []
+        except Exception as exc:
+            log.warning("Could not load video_map.json: %s", exc)
+            return []
+
+    def _maybe_play_nav_video(self, question: str):
+        """
+        Play a navigation video if the question is a directions query.
+
+        Two conditions must both be true before a video plays:
+          1. The question contains a direction-intent phrase
+             (e.g. "where is", "how do I get", "show me").
+          2. The question contains a destination keyword from video_map.json.
+
+        This prevents non-directional questions like "what time does the
+        library close?" from triggering a video even though they name a place.
+        """
+        if not self._nav_videos:
+            return
+
+        q = question.lower()
+
+        # Condition 1: must sound like a directions request.
+        has_intent = any(phrase in q for phrase in _NAV_INTENT_PHRASES)
+        if not has_intent:
+            return
+
+        # Condition 2: must name a known destination.
+        # Pad the question with spaces so whole-word matching works for short
+        # keywords like "su" (avoids false matches inside words like "issue").
+        q_padded = " " + q.strip() + " "
+        for route in self._nav_videos:
+            keywords  = route.get("keywords", [])
+            label     = route.get("label", "?")
+            video_rel = route.get("video", "")
+            if any((" " + kw.strip() + " ") in q_padded for kw in keywords):
+                log.info("Navigation video matched: %s", label)
+                self.face.set_status("Showing route...")
+                self._render(RobotState.IDLE)
+                self.video_player.play(
+                    video_rel,
+                    face=self.face,
+                    on_frame_tick=self._nav_video_tick,
+                )
+                return   # play at most one video per turn
+
+    def _nav_video_tick(self) -> bool:
+        """
+        Called by VideoPlayer after each video frame.
+
+        Keeps the face rendering and pygame events alive during playback.
+        Returns True to stop the video (e.g. shutdown button pressed).
+        """
+        if self.feed.has_face:
+            self._last_face_time = time.time()
+        self.face.render(RobotState.IDLE)
+        self._pump()
+        return not self.running   # True = stop video
 
     # =========================================================== shutdown
 
