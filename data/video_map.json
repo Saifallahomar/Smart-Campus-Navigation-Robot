@@ -3,17 +3,18 @@
   "routes": [
     {
       "label": "library",
-      "keywords": ["library", "d block", "frenchay library", "the library"],
+      "keywords": ["library", "d block", "frenchay library"],
       "video": "data/videos/z_to_library.mp4"
     },
     {
       "label": "students union",
-      "keywords": ["student union", "students union", "su", "u block", "the su"],
+      "keywords": ["su", "students union", "student union", "students' union", "u block"],
       "video": "data/videos/z_to_su.mp4"
     },
     {
       "label": "x block",
-      "keywords": ["x block", "xblock", "business school", "bristol business school"],
+      "keywords": ["x block", "xblock", "business school", "law school",
+                   "bristol business school"],
       "video": "data/videos/z_to_xblock.mp4"
     }
   ]

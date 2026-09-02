@@ -218,26 +218,63 @@ _NAV_INTENT_PHRASES = [
     # English — action requests
     "show me", "show me the way", "take me to",
     "navigate to", "walk to", "lead me to",
+    "guide me to", "point me to", "direct me to", "bring me to",
     # English — softer phrases
     "directions to", "route to", "way to",
     "get to the", "find the",
     "can you show me", "can you take me", "can you direct me",
+    "can you guide me", "can you point me",
     "i need to get to", "i want to go to", "i'm looking for",
-    "looking for the", "need directions",
+    "looking for the", "need directions", "quickest way", "best way",
     # Arabic
     "أين", "كيف أصل", "كيف أذهب", "دلني على",
     # French
     "où est", "comment aller", "montrez moi", "comment je peux aller",
 ]
 
-# Extra intent patterns that are NOT simple contiguous substrings, e.g.
-# "can you tell me where the library is" — "where ... is" is split by the
-# destination name, so a plain "where is" substring test misses it.
+# Structural direction-intent patterns. These describe the SHAPE of a directions
+# request rather than exact sentences, so new phrasings work without code edits:
+# "can you guide me to...", "point me to...", "which route to...", "I'd like to
+# get to...". A question needs ONE of these plus a destination keyword.
 _NAV_INTENT_REGEXES = [
-    re.compile(r"\bwhere\b.{0,40}\bis\b"),      # "where the library is"
-    re.compile(r"\bhow\b.{0,20}\bget to\b"),    # "how would i get to"
-    re.compile(r"\bwhich way\b"),               # "which way to the su"
-    re.compile(r"\bgo to\b"),                   # "i want to go to x block"
+    # "where is X", "where's X", "where the X is", "where can I find X"
+    re.compile(r"\bwhere\b"),
+    # "how do/can/would I get|go|reach|walk|find", "how to get"
+    re.compile(r"\bhow\b.{0,30}\b(get|go|going|reach|walk|drive|travel|arrive|find)\b"),
+    # "which way", "what direction", "which route"
+    re.compile(r"\b(which|what)\s+(way|direction|route|building)\b"),
+    # "take me", "guide me", "lead me", "point me", "direct me", "show me", ...
+    re.compile(r"\b(take|guide|lead|point|direct|bring|walk|send|show|escort)\s+me\b"),
+    # "directions to", "route to", "way to", "path to"
+    re.compile(r"\b(directions?|route|way|path)\s+to\b"),
+    # "I want / need / would like / am trying to go|get|reach|visit|find"
+    re.compile(r"\b(want|need|like|trying|wish|hoping)\b.{0,25}\b(go|get|reach|visit|find)\b"),
+    # "go to", "get to", "head to", "walk to"
+    re.compile(r"\b(go|get|head|walk|drive)\s+to\b"),
+    # bare cues
+    re.compile(r"\bnavigate\b"),
+    re.compile(r"\blooking for\b"),
+    re.compile(r"\bdirections?\b"),
+    re.compile(r"\bfind\s+(the\s+|my\s+|your\s+)?(way|route)\b"),
+    # Arabic
+    re.compile(r"أين"), re.compile(r"كيف أصل"), re.compile(r"كيف أذهب"),
+    re.compile(r"دلني"), re.compile(r"الطريق"),
+    # French
+    re.compile(r"\boù\b"), re.compile(r"comment aller"),
+    re.compile(r"\bmontre[rz]?\b"), re.compile(r"\bchemin\b"),
+]
+
+# Questions that name a building but are NOT asking how to reach it.
+# Checked BEFORE the intent patterns, so "what time does the library close?"
+# never plays a route video even though it says "library".
+_NAV_BLOCK_REGEXES = [
+    re.compile(r"\bwhat\s+time\b"),
+    re.compile(r"\bwhen\s+(does|do|is|are|will)\b"),
+    re.compile(r"\bopening\s+hours?\b"),
+    re.compile(r"\b(does|do|is|are)\b.{0,25}\b(open|opens|close|closes|closed)\b"),
+    re.compile(r"\bwhat\s+(services|facilities|shops|food|events|happens)\b"),
+    re.compile(r"\bwhat\s+(is|are)\s+(in|inside|at|available|on)\b"),
+    re.compile(r"\bhow\s+(much|many|long|late|old|big)\b"),
 ]
 
 # Punctuation stripper for matching. Whisper transcripts almost always end with
@@ -1125,15 +1162,18 @@ class Robot:
         Return the video path if this is a directions query for a known
         destination whose video file actually exists, otherwise None.
 
-        Three conditions must all be true:
-          1. A direction-intent phrase or pattern is present
-             (e.g. "where is", "show me", "where ... is", "which way").
+        Conditions, in order:
+          0. The question is NOT one of the "about the building" forms
+             ("what time does the library close?", "what services are in it?").
+          1. A direction-intent phrase or structural pattern is present
+             ("where", "guide me to", "which route", "I want to get to", ...).
           2. A destination keyword from video_map.json appears as a whole word.
           3. The video file exists on disk.
 
-        Condition 1 prevents "what time does the library close?" from playing a
-        video. Condition 3 guarantees the robot never promises a video it cannot
-        actually show — the result of this call is what the AI is told.
+        Step 0 keeps non-directional questions quiet; step 1 is deliberately
+        generous so visitors never have to phrase things a special way. Step 3
+        guarantees the robot never promises a video it cannot actually show —
+        the result of this call is what the AI is told for this turn.
 
         Both the question and the keywords are normalised (lowercased, punctuation
         replaced by spaces) before matching, so "Where is the library?" matches
@@ -1144,6 +1184,13 @@ class Robot:
 
         q_norm = _normalize_for_match(question)
 
+        # Step 0 — asking ABOUT a building, not how to reach it.
+        blocked = next((rx for rx in _NAV_BLOCK_REGEXES if rx.search(q_norm)), None)
+        if blocked is not None:
+            log.debug("Not a directions question (matched exclusion) — no video.")
+            return None
+
+        # Step 1 — does this sound like a directions request at all?
         has_intent = (
             any(_normalize_for_match(p).strip() in q_norm for p in _NAV_INTENT_PHRASES)
             or any(rx.search(q_norm) for rx in _NAV_INTENT_REGEXES)
