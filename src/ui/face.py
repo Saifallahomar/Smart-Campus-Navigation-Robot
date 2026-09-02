@@ -313,6 +313,33 @@ class Face:
         pygame.display.flip()
         self.clock.tick(self.fps)
 
+    def render_fullscreen_frame(self):
+        """
+        Blit the current preview frame (stored by set_preview) at full-screen
+        size, then draw the shutdown button on top.
+
+        Used during navigation video playback so the route video fills the whole
+        display instead of just the camera panel.  The shutdown button remains
+        visible so the user can always stop the robot.
+        """
+        if self._preview is not None:
+            try:
+                scaled = pygame.transform.smoothscale(self._preview, (self.W, self.H))
+                self.screen.blit(scaled, (0, 0))
+            except Exception:
+                self.screen.fill(theme.BACKGROUND)
+        else:
+            self.screen.fill(theme.BACKGROUND)
+
+        self._draw_shutdown_button()
+
+        if self._real_screen is not None:
+            rotated = pygame.transform.rotate(self.screen, self._sw_rotate)
+            self._real_screen.blit(rotated, (0, 0))
+
+        pygame.display.flip()
+        self.clock.tick(self.fps)
+
     # ========================================================= PORTRAIT ZONES
 
     def _draw_preview_zone(self, state_value):

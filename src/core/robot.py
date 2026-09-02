@@ -210,10 +210,23 @@ TOUR_PHRASES = [
 # At least one must appear for a navigation video to be shown.
 # This prevents e.g. "what time does the library close?" from triggering a video.
 _NAV_INTENT_PHRASES = [
-    "where is", "where's", "how do i get", "how to get",
-    "show me", "directions to", "route to", "way to",
-    "how do i find", "how to find", "take me to",
-    "navigate to", "walk to", "get to the", "find the",
+    # English — direct questions
+    "where is", "where's", "where can i find",
+    "how do i get", "how to get", "how do i reach",
+    "how do i find", "how to find",
+    # English — action requests
+    "show me", "show me the way", "take me to",
+    "navigate to", "walk to", "lead me to",
+    # English — softer phrases
+    "directions to", "route to", "way to",
+    "get to the", "find the",
+    "can you show me", "can you take me", "can you direct me",
+    "i need to get to", "i want to go to", "i'm looking for",
+    "looking for the", "need directions",
+    # Arabic
+    "أين", "كيف أصل", "كيف أذهب", "دلني على",
+    # French
+    "où est", "comment aller", "montrez-moi", "comment je peux aller",
 ]
 
 # What the robot says when it runs the arm.
@@ -507,13 +520,17 @@ class Robot:
                                  unsure=is_fallback)
             log.info("Speaking: %s", answer[:80])
             self.face.set_caption(robot=answer)
-            self._speak(answer)
-            self._post_expression(question, is_fallback)
+
+            # Check for a navigation video BEFORE speaking so we can start
+            # both the audio and the video at the same time.
+            nav_video = self._find_nav_video(question)
+            if nav_video:
+                self._speak_with_nav_video(answer, nav_video)
+            else:
+                self._speak(answer)
+                self._post_expression(question, is_fallback)
+
             self.face.clear_caption()
-
-            # Navigation video: show route video if the question was directional.
-            self._maybe_play_nav_video(question)
-
             self._render(RobotState.IDLE)
 
         log.info("Session ended — returning to idle.")
@@ -977,31 +994,28 @@ class Robot:
             log.warning("Could not load video_map.json: %s", exc)
             return []
 
-    def _maybe_play_nav_video(self, question: str):
+    def _find_nav_video(self, question: str):
         """
-        Play a navigation video if the question is a directions query.
+        Return the video path if this is a directions query for a known
+        destination, otherwise return None.
 
-        Two conditions must both be true before a video plays:
-          1. The question contains a direction-intent phrase
-             (e.g. "where is", "how do I get", "show me").
-          2. The question contains a destination keyword from video_map.json.
+        Two conditions must both be true:
+          1. A direction-intent phrase is present (e.g. "where is", "show me").
+          2. A destination keyword from video_map.json appears as a whole word.
 
-        This prevents non-directional questions like "what time does the
-        library close?" from triggering a video even though they name a place.
+        This prevents "what time does the library close?" from triggering a
+        video even though it names a place.
         """
         if not self._nav_videos:
-            return
+            return None
 
         q = question.lower()
-
-        # Condition 1: must sound like a directions request.
         has_intent = any(phrase in q for phrase in _NAV_INTENT_PHRASES)
         if not has_intent:
-            return
+            return None
 
-        # Condition 2: must name a known destination.
-        # Pad the question with spaces so whole-word matching works for short
-        # keywords like "su" (avoids false matches inside words like "issue").
+        # Pad with spaces so whole-word matching works for short keywords like
+        # "su" — avoids false matches inside words like "issue" or "visual".
         q_padded = " " + q.strip() + " "
         for route in self._nav_videos:
             keywords  = route.get("keywords", [])
@@ -1009,25 +1023,70 @@ class Robot:
             video_rel = route.get("video", "")
             if any((" " + kw.strip() + " ") in q_padded for kw in keywords):
                 log.info("Navigation video matched: %s", label)
-                self.face.set_status("Showing route...")
-                self._render(RobotState.IDLE)
-                self.video_player.play(
-                    video_rel,
-                    face=self.face,
-                    on_frame_tick=self._nav_video_tick,
-                )
-                return   # play at most one video per turn
+                return video_rel
+
+        return None
+
+    def _speak_with_nav_video(self, text: str, video_rel_path: str):
+        """
+        Synthesise TTS, then play the route video full-screen while the audio
+        runs simultaneously in the background.
+
+        Flow:
+          1. Synthesise TTS (network call, must finish before playback starts).
+          2. Start aplay subprocess (non-blocking — audio begins immediately).
+          3. Play video full-screen via VideoPlayer; _nav_video_tick renders
+             each frame and keeps pygame events alive.
+          4. After video ends, wait for audio to finish if still playing.
+          5. Brief post-speech pause so the mic echo doesn't start a new turn.
+
+        If the video file is missing, voice-only playback continues normally.
+        """
+        self._render(RobotState.SPEAKING)
+        audio_out = self.assistant.synthesize(text, self.answer_path)
+
+        # Start audio playback — non-blocking subprocess.
+        proc = self.player.play_async(audio_out) if audio_out else None
+
+        # Play video full-screen concurrently with the audio subprocess.
+        log.info("Showing navigation video: %s", video_rel_path)
+        self.face.set_status("Showing route...")
+        played = self.video_player.play(
+            video_rel_path,
+            face=self.face,
+            on_frame_tick=self._nav_video_tick,
+        )
+
+        if not played:
+            log.info("Navigation video unavailable — voice only.")
+            if proc is None:
+                # No audio either; hold the speaking face for a sensible time.
+                self._hold(RobotState.SPEAKING,
+                           min(8.0, max(2.0, len(text) / 15.0)))
+
+        # Video ended — wait for audio if it's still running.
+        while self.player.is_playing() and self.running:
+            if self.feed.has_face:
+                self._last_face_time = time.time()
+            self._refresh_preview()
+            self._pump()
+            self.face.render(RobotState.IDLE)
+
+        # Brief pause so speaker echo doesn't bleed into the next recording.
+        self._hold(RobotState.IDLE, 0.35)
 
     def _nav_video_tick(self) -> bool:
         """
-        Called by VideoPlayer after each video frame.
+        Called by VideoPlayer after each frame is pushed into face via set_preview.
 
-        Keeps the face rendering and pygame events alive during playback.
-        Returns True to stop the video (e.g. shutdown button pressed).
+        Renders the frame full-screen (replacing the normal face + camera layout),
+        processes pygame events, and refreshes the face-presence timer.
+
+        Returns True to stop the video (shutdown button pressed or robot stopping).
         """
         if self.feed.has_face:
             self._last_face_time = time.time()
-        self.face.render(RobotState.IDLE)
+        self.face.render_fullscreen_frame()
         self._pump()
         return not self.running   # True = stop video
 
