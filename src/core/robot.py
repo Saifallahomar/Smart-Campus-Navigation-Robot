@@ -331,11 +331,11 @@ ERROR_HOLD_SECS = 2.0
 # synthesised and spoken separately — captions stay readable and the shutdown
 # button stays responsive between parts.
 #
-# "video" is a placeholder for the tour video we will add later: set it to a
-# path under data/videos/ and _run_z_block_tour() will play it full-screen while
-# speaking, exactly like the navigation routes already do. Leave it None for now.
+# "video" plays full-screen while the whole script is spoken. Set it to None to
+# go back to speech only. A missing file is handled gracefully — the tour still
+# runs, just without pictures.
 Z_BLOCK_TOUR = {
-    "video": None,
+    "video": "data/videos/zblock_tour.mp4",
     "countdown_seconds": 5,
     "script": [
         "Welcome to Z Block, UWE Bristol's School of Engineering building.",
@@ -1407,10 +1407,16 @@ class Robot:
 
         Listening is paused for the whole tour and the greeting is suppressed,
         so the robot is never interrupted by itself or by a face appearing.
-        The robot does NOT move — this is speech only.
+        The robot does NOT move — this is speech and video only.
 
-        When a tour video is added later, set Z_BLOCK_TOUR["video"] to its path
-        and it will play full-screen alongside the speech.
+        With a video configured, the whole script is spoken as ONE utterance so
+        the speech and the full-screen video run together from start to finish
+        and end cleanly. Speaking paragraph by paragraph would end the video
+        after the first one and leave the rest of the tour with a blank screen.
+
+        Without a video (or if the file is missing) the script is spoken
+        paragraph by paragraph instead, which keeps the on-screen captions
+        readable. Either way the robot returns to the normal face afterwards.
         """
         self._tour_active = True
         try:
@@ -1425,20 +1431,34 @@ class Robot:
                 self._hold(RobotState.HAPPY, 1.0)
             self.face.clear_caption()
 
-            video = Z_BLOCK_TOUR.get("video")
+            video  = Z_BLOCK_TOUR.get("video")
             script = Z_BLOCK_TOUR.get("script", [])
+            if not script:
+                log.warning("Tour script is empty — nothing to say.")
+                return
 
-            for index, paragraph in enumerate(script):
-                if not self.running:
-                    log.info("Tour stopped early.")
-                    return
-                log.info("Tour part %d/%d.", index + 1, len(script))
-                self.face.set_caption(robot=paragraph)
-                # The video slot is reserved for later: when a path is set, the
-                # first paragraph plays it full-screen while the audio runs.
-                if video and index == 0:
-                    self._speak_with_nav_video(paragraph, video)
-                else:
+            # Only treat the video as usable if it is really there. Checking
+            # here means the "video missing" case falls back to the nicer
+            # paragraph-by-paragraph captions instead of one long block.
+            has_video = False
+            if video:
+                full_path = self.settings.project_root / video
+                has_video = full_path.exists()
+                if not has_video:
+                    log.warning("Tour video missing (%s) — speaking the tour "
+                                "without it.", full_path)
+
+            if has_video:
+                log.info("Playing Z Block tour video with speech: %s", video)
+                self.face.set_caption(robot=script[0])
+                self._speak_with_nav_video(" ".join(script), video)
+            else:
+                for index, paragraph in enumerate(script):
+                    if not self.running:
+                        log.info("Tour stopped early.")
+                        return
+                    log.info("Tour part %d/%d.", index + 1, len(script))
+                    self.face.set_caption(robot=paragraph)
                     self._speak(paragraph)
 
             self.face.clear_caption()
