@@ -1,0 +1,31 @@
+# Secrets - NEVER commit these
+.env
+.env.save
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Generated audio / runtime files
+*.wav
+logs/
+*.log
+
+# Videos live on the Pi only — too large for the repo.
+# data/video_map.json (the route map) IS tracked; the media files are not.
+data/videos/
+*.mp4
+*.mov
+*.avi
+*.mkv
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

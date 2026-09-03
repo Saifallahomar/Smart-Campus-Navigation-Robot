@@ -1,0 +1,130 @@
+{
+  "_comment": "User-editable settings. Edit values here — no need to touch Python code. Secrets go in .env, NOT here.",
+  "mock_mode": false,
+  "language": "auto",
+  "devices": {
+    "mic_device": 0,
+    "speaker_device": "plughw:2,0",
+    "mic_auto_detect_name": "EMEET",
+    "speaker_auto_detect": false
+  },
+  "audio": {
+    "sample_rate": 16000,
+    "chunk_seconds": 0.2,
+    "voice_threshold": 500,
+    "_silence_comment": "How many seconds of silence after speech ends before the recording stops. 2.0s gives the user time to pause naturally mid-sentence.",
+    "silence_to_stop": 2.0,
+    "max_record_seconds": 15,
+    "_wait_comment": "How long to wait for the user to START speaking before giving up.",
+    "max_initial_wait_seconds": 6.0
+  },
+  "vision": {
+    "enabled": true,
+    "frame_width": 640,
+    "frame_height": 480,
+    "cascade_path": "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml",
+    "scale_factor": 1.2,
+    "min_neighbors": 5,
+    "min_face_size": 60,
+    "show_preview": true,
+    "track_face": true,
+    "feed_fps": 15,
+    "_camera_controls_comment": "Optional Picamera2 quality controls applied after the camera starts. Safe to remove or adjust. AWB modes: 0=Auto 1=Incandescent 2=Tungsten 3=Fluorescent 4=Indoor 5=Daylight 6=Cloudy. Brightness: -1.0 to +1.0 (default 0.0). Contrast/Saturation/Sharpness: 0.0 to 32.0 (default 1.0). Remove this block entirely to use camera defaults.",
+    "camera_controls": {
+      "AwbMode": 4,
+      "Brightness": 0.05,
+      "Contrast": 1.1,
+      "Saturation": 1.15
+    }
+  },
+  "ai": {
+    "chat_model": "gpt-4o-mini",
+    "transcribe_model": "gpt-4o-mini-transcribe",
+    "tts_model": "gpt-4o-mini-tts",
+    "_voice_comment": "OpenAI voice name. 'fable' has a British lean; 'alloy', 'coral', 'sage', 'nova', 'shimmer', 'echo', 'onyx' are alternatives.",
+    "tts_voice": "fable",
+    "_instructions_comment": "Accent and delivery styling for gpt-4o-mini-tts. Changes only HOW the robot speaks, never what it says. Edit freely, or set to \"\" to turn styling off. Ignored automatically by models that do not support it (e.g. tts-1).",
+    "tts_instructions": "Speak in a warm, clear British English accent, like a friendly UK university campus guide at UWE Bristol. Sound welcoming, natural and unhurried, never rushed or robotic. If the text is in Arabic, French, or Chinese, speak it naturally in that language with a native accent instead.",
+    "max_history_turns": 12,
+    "use_local_faq": false,
+    "request_timeout": 30,
+    "max_retries": 2
+  },
+  "wake_word": {
+    "enabled": false,
+    "engine": "energy",
+    "keywords": [
+      "hey robot",
+      "hello robot"
+    ],
+    "porcupine_keyword_paths": []
+  },
+  "ui": {
+    "show_captions": true,
+    "fullscreen": true,
+    "fps": 30,
+    "shutdown_action": "quit",
+    "_layout_comment": "Portrait mode for the Pi 7-inch screen in vertical orientation. Set portrait to false for landscape (small thumbnail instead of large preview).",
+    "portrait": false,
+    "preview_height_frac": 0.45,
+    "face_height_frac": 0.29,
+    "_mirror_comment": "Mirror the live camera preview so it looks like a selfie camera. Set to false for a raw (non-mirrored) view. Detection is never affected.",
+    "mirror_preview": true
+  },
+  "conversation": {
+    "_comment": "How long the robot stays in conversation mode after the person stops talking or leaves.",
+    "person_lost_timeout": 8,
+    "_grace_comment": "Guaranteed seconds after the robot finishes speaking during which the session stays alive even if the camera cannot see a face. Visitors look at the screen or turn slightly while thinking of a follow-up, and frontal-face detection loses them. Raise this if the robot still sleeps too early.",
+    "post_answer_grace_seconds": 7,
+    "_max_session_comment": "Set max_session_seconds to a number (e.g. 300) to limit session length, or leave null for unlimited.",
+    "max_session_seconds": null,
+    "farewell_message": "Bye! Have a great day!"
+  },
+  "wave_detection": {
+    "_comment": "Lightweight wave-gesture detection. When the user waves, the screen shows 'User is waving'. Set enabled to false to turn it off.",
+    "enabled": true,
+    "_threshold_comment": "motion_threshold: 0-255, higher = less sensitive. min_motion_frames: how many frames of motion before confirming a wave.",
+    "motion_threshold": 30,
+    "min_motion_frames": 8,
+    "cooldown_seconds": 3.0
+  },
+  "question_logging": {
+    "_comment": "Optional text-only log of questions and answers for improving the robot. Logs to logs/questions.csv. Never logs audio, images, faces, or personal data.",
+    "enabled": true
+  },
+  "arduino": {
+    "_comment": "Arduino Mega motor controller connected via USB serial.",
+    "port": "/dev/ttyACM0",
+    "baud": 9600,
+    "_password_comment": "Spoken password required before starting the campus tour.",
+    "tour_password": "start"
+  },
+  "phone_server": {
+    "_comment": "Web-based phone motor control — automatically started by run.py. Open http://<Pi-IP>:5000 on your phone. Shows live camera and D-pad controls. Set enabled to false to disable.",
+    "enabled": true,
+    "port": 5000
+  },
+  "servo": {
+    "_comment": "Single 180-degree pan servo for the head. It moves ONLY on a voice command (e.g. 'look left', 'look forward') — it does NOT auto-follow the camera. Signal -> GPIO 18 (physical pin 12), power -> external 5V, ground -> shared GND. Set enabled to false if no servo is connected.",
+    "enabled": true,
+    "gpio_pin": 18,
+    "_angle_comment": "Full safe sweep range in degrees (180-degree servo = -90..90). Narrow these if the head hits something.",
+    "min_angle": -90,
+    "max_angle": 90,
+    "center_angle": 0,
+    "_voice_comment": "How far 'look left'/'look right' turn from centre, in degrees. Kept below the full range as a safe limit so the head never swings too far.",
+    "voice_look_angle_deg": 60,
+    "_motion_comment": "Smoothness controls. smoothing: fraction of remaining distance moved per tick (lower = gentler glide). max_speed_deg_per_sec caps turn speed (lower = slower). deadzone_deg = how close counts as arrived. wake_zone_deg = how big a change must be to start moving again.",
+    "smoothing": 0.12,
+    "max_speed_deg_per_sec": 60,
+    "deadzone_deg": 2.0,
+    "wake_zone_deg": 5.0,
+    "_rest_comment": "idle_release_seconds: once settled, wait this long then stop pulsing so the servo is silent.",
+    "idle_release_seconds": 1.5,
+    "recenter_delay_seconds": 1.5,
+    "_mount_comment": "Set invert to true if the head turns the wrong way. Pulse widths suit a typical SG90; adjust if your servo's range is off.",
+    "invert": false,
+    "min_pulse_width_ms": 0.5,
+    "max_pulse_width_ms": 2.5
+  }
+}

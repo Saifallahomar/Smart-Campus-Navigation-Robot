@@ -1,0 +1,58 @@
+{
+  "_about": "Approved explanations for common robot and electronics components. Explanations are short, beginner-friendly, and accurate. If a part is NOT in this list, the robot must say it is not sure rather than guessing. Do not expand or invent details beyond what is written here.",
+
+  "parts": [
+    {
+      "names": ["ultrasonic sensor", "ultrasonic", "hc-sr04", "distance sensor", "sonar sensor"],
+      "explanation": "An ultrasonic sensor measures distance by sending out a high-frequency sound pulse and timing how long it takes to echo back — the same principle as a bat's echolocation. It is commonly used in robots to detect obstacles, measure distances, and avoid collisions. The popular HC-SR04 can measure distances from about 2 cm to 4 metres."
+    },
+    {
+      "names": ["servo motor", "servo", "servo actuator"],
+      "explanation": "A servo motor can rotate to a precise angle and hold that position. It has a built-in feedback mechanism so the controller always knows exactly where it is pointing. Servos are widely used in robotics for joints, steering, camera mounts, and any application that needs accurate positioning."
+    },
+    {
+      "names": ["dc motor", "dc motors", "direct current motor"],
+      "explanation": "A DC motor converts electrical energy into rotational motion. The speed is controlled by adjusting the voltage, and the direction is changed by reversing the polarity. DC motors are used to drive wheels, fans, and conveyor systems in robots and many other devices."
+    },
+    {
+      "names": ["motor driver", "motor controller", "l298n", "h-bridge", "l293d"],
+      "explanation": "A motor driver is an interface circuit between a microcontroller (such as a Raspberry Pi or Arduino) and a motor. It handles the higher power that motors need, which the small output pins of a microcontroller cannot supply directly. It also allows independent control of motor speed and direction. Common examples are the L298N and L293D modules."
+    },
+    {
+      "names": ["raspberry pi", "raspi", "rpi", "pi 5", "raspberry pi 5"],
+      "explanation": "The Raspberry Pi is a small, affordable single-board computer about the size of a credit card. It runs a full Linux operating system, can run Python programs, control hardware via GPIO pins, connect to the internet, and handle camera input. This robot uses a Raspberry Pi 5 with 8 GB of RAM."
+    },
+    {
+      "names": ["arduino", "arduino uno", "arduino nano", "arduino mega"],
+      "explanation": "An Arduino is a small microcontroller board designed for controlling hardware in real time. Unlike a Raspberry Pi it runs a single program at a time and is excellent for time-critical tasks like reading sensors and driving motors with precise timing. In many robot projects, an Arduino handles low-level hardware while a Raspberry Pi handles higher-level tasks like AI and communication."
+    },
+    {
+      "names": ["battery", "lipo battery", "lithium polymer", "lithium ion", "power bank"],
+      "explanation": "Batteries provide the portable power source for a robot. Lithium Polymer (LiPo) batteries are popular in robotics because they are lightweight, compact, and can deliver high currents. Always handle LiPo batteries with care — they should never be overcharged, deeply discharged, or physically punctured, as this is a fire hazard. Always use a compatible charger and a fire-safe bag."
+    },
+    {
+      "names": ["buck converter", "step-down converter", "voltage regulator module", "dc-dc converter", "step down"],
+      "explanation": "A buck converter is an electronic circuit that efficiently steps down a higher voltage to a lower one. For example, converting a 12 V battery to 5 V for a Raspberry Pi. It is much more efficient than a simple linear voltage regulator, which wastes the excess energy as heat. Buck converters are essential in battery-powered robots to supply different components with the correct voltage."
+    },
+    {
+      "names": ["emergency stop", "e-stop", "estop", "kill switch", "emergency button"],
+      "explanation": "An emergency stop (e-stop) is a safety switch that immediately cuts power or halts the robot when pressed. It is a mandatory safety feature on any robot that moves or could cause injury. The e-stop should always be easily reachable by the operator and should be tested before every session. In the UK, the relevant safety standard for robot e-stops is BS EN ISO 13850."
+    },
+    {
+      "names": ["camera", "pi camera", "camera module", "picamera2", "camera module 3"],
+      "explanation": "A camera module captures still images or live video. This robot uses the Raspberry Pi Camera Module 3, which connects directly to the Raspberry Pi via a CSI ribbon cable. It provides high-quality video that is processed by the OpenCV library for face detection and by the OpenAI API for scene description."
+    },
+    {
+      "names": ["speaker", "microphone", "mic", "audio", "emeet", "speaker and microphone"],
+      "explanation": "A speaker converts digital audio into sound — the robot uses one to speak its responses out loud. A microphone picks up the user's voice so it can be transcribed and understood. Together they enable natural voice interaction. This robot uses an EMEET conference microphone and speaker combination."
+    },
+    {
+      "names": ["gpio", "gpio pins", "general purpose io", "pins"],
+      "explanation": "GPIO stands for General-Purpose Input/Output. These are the small metal pins on a Raspberry Pi or Arduino that can be configured as inputs (to read sensors) or outputs (to control LEDs, motors, and other devices). On a Raspberry Pi 5, there are 40 GPIO pins. Always check the voltage levels before connecting components — most GPIO pins use 3.3 V logic."
+    },
+    {
+      "names": ["pwm", "pulse width modulation"],
+      "explanation": "PWM stands for Pulse Width Modulation. It is a technique for controlling the amount of power delivered to a device by rapidly switching a signal on and off. The ratio of on-time to off-time (called the duty cycle) determines the effective power. PWM is used to control the speed of motors, the brightness of LEDs, and the position of servo motors."
+    }
+  ]
+}
