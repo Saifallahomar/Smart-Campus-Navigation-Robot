@@ -44,7 +44,7 @@ from src.audio.recorder import Recorder
 from src.audio.wakeword import WakeWord
 from src.core.states import RobotState
 from src.hardware.head_controller import build_head_controller
-from src.ui.face import Face
+from src.ui.face import Face, RESTART_CONFIRM_SECONDS
 from src.utils.logging_setup import get_logger
 from src.hardware.arduino import ArduinoController
 from src.core.phone_server import PhoneControlServer
@@ -326,6 +326,39 @@ OBSTACLE_MSG = "Please clear the way so I can continue safely."
 # How long to hold the ERROR face before returning to idle.
 ERROR_HOLD_SECS = 2.0
 
+# ---------------------------------------------------------------- Z Block tour
+# Spoken when the TOUR button is pressed. Split into paragraphs so each is
+# synthesised and spoken separately — captions stay readable and the shutdown
+# button stays responsive between parts.
+#
+# "video" is a placeholder for the tour video we will add later: set it to a
+# path under data/videos/ and _run_z_block_tour() will play it full-screen while
+# speaking, exactly like the navigation routes already do. Leave it None for now.
+Z_BLOCK_TOUR = {
+    "video": None,
+    "countdown_seconds": 5,
+    "script": [
+        "Welcome to Z Block, UWE Bristol's School of Engineering building.",
+
+        "Completed in 2020 and officially opened in 2021, this is a place where "
+        "ideas become real. Across four floors, students learn through hands-on "
+        "projects using specialist labs, workshops, and digital engineering spaces.",
+
+        "Here in Z Block, there are mechatronics labs, electronics and robotics "
+        "spaces, 3D printing, CNC machining, and simulation tools.",
+
+        "UWE offers courses in areas including engineering, electronics, robotics, "
+        "and mechatronics. I am a Smart Campus Navigation Robot, so I am one "
+        "example of how students can design, build, test, and improve an "
+        "innovative project.",
+
+        "Please enjoy the tour, and feel free to ask me any questions about "
+        "Z Block, UWE Bristol, or where you would like to go.",
+
+        "Thank you for choosing UWE Bristol, and once again, welcome to Z Block.",
+    ],
+}
+
 # Minimum seconds between verbal greetings.
 # Prevents the robot from saying "Hi there!" again when the face-detection
 # flickers or the person steps back briefly and then returns.
@@ -344,6 +377,12 @@ class Robot:
         self._last_face_time = 0.0   # tracks when a face was last seen in a session
         self._last_greet_time = 0.0  # tracks when the robot last spoke a verbal greeting
         self._answer_grace_until = 0.0  # guaranteed listening window after speaking
+        # Tour button. The press is only *recorded* inside _pump(); the tour is
+        # started later from a safe point in the main loops (same pattern as
+        # _obstacle_pending). Running it directly from _pump() would re-enter
+        # _pump() through _speak() and could start the tour on top of itself.
+        self._tour_pending = False
+        self._tour_active  = False
 
         self.voice_path  = str(settings.project_root / "voice.wav")
         self.answer_path = str(settings.project_root / "answer.wav")
@@ -533,6 +572,11 @@ class Robot:
                 log.info("Person absent %.1fs — returning to idle.", absent)
                 break
 
+            # --- Tour button (queued by _pump) --------------------------------
+            if self._tour_pending:
+                self._maybe_run_tour()
+                continue
+
             # --- Obstacle message (set by Arduino reader thread) ---------------
             if self._obstacle_pending:
                 self._obstacle_pending = False
@@ -671,6 +715,11 @@ class Robot:
             self._refresh_preview()
             self._render(RobotState.IDLE)
 
+            # The TOUR button works while idle too, not only mid-conversation.
+            if self._tour_pending:
+                self._maybe_run_tour()
+                continue
+
             if self.feed.has_face:
                 # _refresh_preview() above already drives head tracking.
                 log.info("Person detected — starting session.")
@@ -698,6 +747,10 @@ class Robot:
                         break
         else:
             self._hold(RobotState.FACE_DETECTED, 0.4)
+
+        # Never greet over the tour — the script must not be interrupted.
+        if self._tour_active or self._tour_pending:
+            return
 
         # Only greet verbally if enough time has passed since the last greeting.
         # This prevents the robot from saying "Hi there!" repeatedly when face
@@ -834,6 +887,10 @@ class Robot:
         self.face.clear_caption()
 
         for attempt in range(1 + _MAX_LISTEN_RETRIES):
+            # The TOUR button was pressed — stop listening so it can start.
+            if self._tour_pending:
+                return None
+
             if attempt == 0:
                 log.info("Listening started...")
             else:
@@ -1017,6 +1074,9 @@ class Robot:
 
     def _listen_tick(self, volume, started):
         """Called every audio chunk to keep the UI alive during recording."""
+        # Abort the recording promptly if the TOUR button was pressed.
+        if self._tour_pending:
+            return True
         if self.feed.has_face:
             self._last_face_time = time.time()
         self._refresh_preview()
@@ -1051,13 +1111,20 @@ class Robot:
             if event == "quit":
                 log.info("Quit requested.")
                 self.running = False
-            elif event == "shutdown":
-                log.info("Safe shutdown requested.")
-                self.running = False
-                self._do_shutdown = True
+            elif event == "restart_armed":
+                log.info("Restart button armed — tap again within %.0fs to confirm.",
+                         RESTART_CONFIRM_SECONDS)
+            elif event == "restart_confirmed":
+                log.info("Restart confirmed.")
+                self._restart_pi()
             elif event == "tour_requested":
-                log.info("Tour button pressed.")
-                self._handle_tour_request()
+                if self._tour_active:
+                    log.info("Tour already running — ignoring button.")
+                elif self._tour_pending:
+                    log.info("Tour already queued — ignoring button.")
+                else:
+                    log.info("Tour button pressed — starting shortly.")
+                    self._tour_pending = True
         return self.running
 
     def _trim_history(self):
@@ -1288,6 +1355,100 @@ class Robot:
         self.face.render_fullscreen_frame()
         self._pump()
         return not self.running   # True = stop video
+
+    # ============================================================== restart
+
+    def _restart_pi(self):
+        """
+        Reboot the Raspberry Pi after the on-screen confirmation.
+
+        Uses ``sudo -n`` (non-interactive) so a missing password rule fails fast
+        instead of hanging on an invisible prompt. If the reboot is not permitted
+        the robot says so on screen, logs the exact fix, and carries on running —
+        it never crashes and never silently does nothing.
+        """
+        log.info("Restarting the Raspberry Pi...")
+        self.face.set_caption(robot="Restarting now...")
+        self._hold(RobotState.IDLE, 1.2)
+
+        try:
+            result = subprocess.run(["sudo", "-n", "reboot"],
+                                    capture_output=True, text=True, timeout=10)
+            if result.returncode != 0:
+                raise OSError(result.stderr.strip() or f"exit code {result.returncode}")
+            # Reboot accepted — stop cleanly while the Pi goes down.
+            self.running = False
+            return
+        except Exception as exc:
+            log.error("Could not restart the Pi: %s", exc)
+            log.error("To allow it, run 'sudo visudo' and add this line:")
+            log.error("    %s ALL=(ALL) NOPASSWD: /sbin/reboot",
+                      os.environ.get("USER", "pi"))
+
+        # Restart refused — tell the visitor and keep the robot running.
+        self.face.set_caption(
+            robot="I could not restart myself — permission was refused.")
+        self._hold(RobotState.ERROR, 3.0)
+        self.face.clear_caption()
+        self._render(RobotState.IDLE)
+
+    # ============================================================ Z Block tour
+
+    def _maybe_run_tour(self):
+        """Run a queued tour if the TOUR button was pressed. Safe to call often."""
+        if not self._tour_pending or self._tour_active:
+            return
+        self._tour_pending = False
+        self._run_z_block_tour()
+
+    def _run_z_block_tour(self):
+        """
+        Speak the Z Block welcome script after a short on-screen countdown.
+
+        Listening is paused for the whole tour and the greeting is suppressed,
+        so the robot is never interrupted by itself or by a face appearing.
+        The robot does NOT move — this is speech only.
+
+        When a tour video is added later, set Z_BLOCK_TOUR["video"] to its path
+        and it will play full-screen alongside the speech.
+        """
+        self._tour_active = True
+        try:
+            log.info("Z Block tour starting.")
+
+            # Countdown so people know it is about to begin.
+            for remaining in range(int(Z_BLOCK_TOUR.get("countdown_seconds", 5)), 0, -1):
+                if not self.running:
+                    return
+                self.face.set_caption(robot=f"Tour starting in {remaining}...")
+                self.face.set_status("Tour starting...")
+                self._hold(RobotState.HAPPY, 1.0)
+            self.face.clear_caption()
+
+            video = Z_BLOCK_TOUR.get("video")
+            script = Z_BLOCK_TOUR.get("script", [])
+
+            for index, paragraph in enumerate(script):
+                if not self.running:
+                    log.info("Tour stopped early.")
+                    return
+                log.info("Tour part %d/%d.", index + 1, len(script))
+                self.face.set_caption(robot=paragraph)
+                # The video slot is reserved for later: when a path is set, the
+                # first paragraph plays it full-screen while the audio runs.
+                if video and index == 0:
+                    self._speak_with_nav_video(paragraph, video)
+                else:
+                    self._speak(paragraph)
+
+            self.face.clear_caption()
+            log.info("Z Block tour finished.")
+        finally:
+            self._tour_active = False
+            self.face.clear_caption()
+            # Give the visitor the usual patient window to ask a question.
+            self._begin_answer_grace()
+            self._render(RobotState.IDLE)
 
     # =========================================================== shutdown
 

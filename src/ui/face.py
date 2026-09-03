@@ -42,6 +42,9 @@ from src.utils.logging_setup import get_logger
 
 log = get_logger("face")
 
+# How long the red button stays armed waiting for the confirming second tap.
+RESTART_CONFIRM_SECONDS = 5.0
+
 
 class Face:
     def __init__(self, settings):
@@ -172,6 +175,12 @@ class Face:
             btn, btn)
         self._tour_font = pygame.font.SysFont("Arial", max(10, btn // 3), bold=True)
 
+        # Restart confirmation: the first tap on the red button arms it and
+        # shows a prompt; a second tap while armed confirms. Prevents an
+        # accidental brush against the screen from rebooting the Pi.
+        self._restart_armed_until = 0.0
+        self._confirm_font = pygame.font.SysFont("Arial", max(12, btn // 4), bold=True)
+
         # ----- UWE Bristol branding -----------------------------------------
         # Small logo badge shown at the bottom of the face zone.
         # UWE Bristol brand red: #A8132C
@@ -257,25 +266,87 @@ class Face:
             self._preview = None
 
     # --------------------------------------------------------------- events
+    def _canvas_pos(self, pos):
+        """
+        Convert a touch/click position on the real display into canvas coordinates.
+
+        With software rotation the drawing canvas is an off-screen landscape
+        surface (e.g. 800x480) that is rotated before being blitted to a portrait
+        display (480x800). pygame reports touches in the DISPLAY's coordinate
+        space, while the button rectangles live in the CANVAS space — so without
+        this conversion the buttons are drawn in one place and hit-tested in
+        another, and tapping them does nothing at all.
+
+        Returns pos unchanged when software rotation is not active.
+        """
+        if self._real_screen is None:
+            return pos
+        dx, dy = pos
+        r = self._sw_rotate % 360
+        if r == 90:      # canvas rotated 90° CCW to reach the display
+            return (self.W - 1 - dy, dx)
+        if r == 270:     # canvas rotated 90° CW
+            return (dy, self.H - 1 - dx)
+        if r == 180:
+            return (self.W - 1 - dx, self.H - 1 - dy)
+        return pos
+
+    def arm_restart(self, seconds=RESTART_CONFIRM_SECONDS):
+        """Show the 'Restart Pi?' confirmation prompt for a few seconds."""
+        self._restart_armed_until = time.time() + seconds
+
+    def disarm_restart(self):
+        self._restart_armed_until = 0.0
+
+    @property
+    def restart_armed(self):
+        return time.time() < self._restart_armed_until
+
     def pump_events(self):
-        """Return high-level event strings: 'quit' or 'shutdown'."""
+        """
+        Return high-level event strings.
+
+        Emitted events:
+          'quit'              — window closed, Escape or 'q'
+          'restart_armed'     — first tap on the red button (asks to confirm)
+          'restart_confirmed' — second tap while armed
+          'tour_requested'    — tap on the TOUR button, or 't'
+        """
         events = []
         for e in pygame.event.get():
             if e.type == pygame.QUIT:
                 events.append("quit")
+
             elif e.type == pygame.KEYDOWN:
-                if e.key == pygame.K_ESCAPE:
+                if e.key in (pygame.K_ESCAPE, pygame.K_q):
                     events.append("quit")
-                elif e.key == pygame.K_s:
-                    events.append("shutdown")
+                elif e.key == pygame.K_t:
+                    events.append("tour_requested")
+                elif e.key == pygame.K_r:
+                    # Same two-step confirmation as the on-screen button.
+                    if self.restart_armed:
+                        self.disarm_restart()
+                        events.append("restart_confirmed")
+                    else:
+                        self.arm_restart()
+                        events.append("restart_armed")
+
             elif e.type == pygame.MOUSEBUTTONDOWN:
-                if self._shutdown_rect.collidepoint(e.pos):
-                    events.append("shutdown")
-                elif self._tour_btn_rect.collidepoint(e.pos):
+                pos = self._canvas_pos(e.pos)
+                if self._shutdown_rect.collidepoint(pos):
+                    if self.restart_armed:
+                        self.disarm_restart()
+                        events.append("restart_confirmed")
+                    else:
+                        self.arm_restart()
+                        events.append("restart_armed")
+                elif self._tour_btn_rect.collidepoint(pos):
+                    # Tapping TOUR cancels a pending restart prompt.
+                    self.disarm_restart()
                     events.append("tour_requested")
-            elif e.type == pygame.KEYDOWN:
-                if e.key == pygame.K_t:
-                    events.append("tour_requested")
+                else:
+                    # Tapping anywhere else cancels the restart prompt.
+                    self.disarm_restart()
         return events
 
     # --------------------------------------------------------------- render
@@ -783,6 +854,15 @@ class Face:
         r  = self._shutdown_rect
         cx, cy = r.center
         rad    = r.width // 2
+        armed  = self.restart_armed
+
+        if armed:
+            # Pulsing ring + prompt so the confirmation state is unmistakable.
+            pulse = 0.5 + 0.5 * math.sin(time.time() * 6.0)
+            glow  = int(rad + 4 + pulse * 5)
+            pygame.draw.circle(self.screen, theme.SHUTDOWN, (cx, cy), glow, 2)
+            self._draw_restart_prompt()
+
         pygame.draw.circle(self.screen, theme.SHUTDOWN_DIM, (cx, cy), rad)
         pygame.draw.circle(self.screen, theme.SHUTDOWN,     (cx, cy), rad, 3)
         # Power symbol
@@ -800,6 +880,19 @@ class Face:
         pygame.draw.circle(self.screen, (0, 200, 80),  (tcx, tcy), trad, 3)
         lbl = self._tour_font.render("TOUR", True, (0, 220, 100))
         self.screen.blit(lbl, lbl.get_rect(center=(tcx, tcy)))
+
+    def _draw_restart_prompt(self):
+        """Banner asking the user to tap the red button again to restart."""
+        text = self._confirm_font.render("Restart Pi?  Tap again", True, (255, 255, 255))
+        pad  = 10
+        bw   = text.get_width()  + pad * 2
+        bh   = text.get_height() + pad
+        bx   = self._shutdown_rect.centerx - bw // 2
+        by   = self._shutdown_rect.top - bh - 8
+        bx   = max(4, min(bx, self.W - bw - 4))
+        by   = max(4, by)
+        pygame.draw.rect(self.screen, theme.SHUTDOWN, (bx, by, bw, bh), border_radius=6)
+        self.screen.blit(text, (bx + pad, by + pad // 2))
 
     # ---------------------------------------------- caption helpers (shared)
     def _blit_labeled(self, label, text, x, y, max_w, color, max_lines=2):
