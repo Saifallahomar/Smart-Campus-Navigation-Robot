@@ -1323,12 +1323,27 @@ class Robot:
                 self._hold(RobotState.SPEAKING,
                            min(8.0, max(2.0, len(text) / 15.0)))
 
-        # Video ended — wait for audio if it's still running.
+        # Video ended before the speech did — hold its final frame on screen
+        # until the robot stops talking, instead of snapping back to the face
+        # mid-sentence. The last frame is still in face._preview because the
+        # video player was the last thing to call set_preview(), so simply not
+        # refreshing the camera preview freezes it. The video is NOT looped.
+        #
+        # If the video never played there is no frame worth freezing (the
+        # preview would be a stale camera image), so fall back to the face.
+        if played and self.player.is_playing() and self.running:
+            log.info("Video finished before the speech — holding the last frame.")
+
         while self.player.is_playing() and self.running:
             self._last_face_time = time.time()
-            self._refresh_preview()
+            if played:
+                # Keeps the frozen frame full-screen and the shutdown/restart
+                # button drawn and responsive; paces itself via clock.tick.
+                self.face.render_fullscreen_frame()
+            else:
+                self._refresh_preview()
+                self.face.render(RobotState.IDLE)
             self._pump()
-            self.face.render(RobotState.IDLE)
 
         # Brief pause so speaker echo doesn't bleed into the next recording.
         self._hold(RobotState.IDLE, 0.35)
