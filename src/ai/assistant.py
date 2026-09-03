@@ -47,9 +47,16 @@ class Assistant:
         self.chat_model       = ai.get("chat_model",        "gpt-4o-mini")
         self.transcribe_model = ai.get("transcribe_model",  "gpt-4o-mini-transcribe")
         self.tts_model        = ai.get("tts_model",         "gpt-4o-mini-tts")
-        self.tts_voice        = ai.get("tts_voice",         "alloy")
+        self.tts_voice        = ai.get("tts_voice",         "fable")
         self.timeout          = ai.get("request_timeout",   30)
         self.max_retries      = int(ai.get("max_retries",   2))
+
+        # Voice styling (accent / delivery) for models that support it, such as
+        # gpt-4o-mini-tts. It changes only HOW the text is spoken, never what the
+        # robot says. Older models like tts-1 reject it, so the first failure
+        # disables it for the session rather than leaving the robot silent.
+        self.tts_instructions = ai.get("tts_instructions", "")
+        self._tts_supports_instructions = bool(self.tts_instructions)
 
         self.client = None
         if not _HAS_OPENAI:
@@ -225,14 +232,33 @@ class Assistant:
         if not self.ready:
             return None
 
-        def call():
-            with self.client.audio.speech.with_streaming_response.create(
+        def _create(with_instructions):
+            kwargs = dict(
                 model=self.tts_model,
                 voice=self.tts_voice,
                 input=text,
                 response_format="wav",
-            ) as response:
+            )
+            if with_instructions:
+                kwargs["instructions"] = self.tts_instructions
+            with self.client.audio.speech.with_streaming_response.create(**kwargs) as response:
                 response.stream_to_file(out_path)
+
+        def call():
+            use_instructions = self._tts_supports_instructions and bool(self.tts_instructions)
+            try:
+                _create(use_instructions)
+            except Exception as exc:
+                if not use_instructions:
+                    raise
+                # The model or the installed SDK does not accept voice
+                # instructions. Retry once plainly and stop sending them for the
+                # rest of the session — a styling option must never make the
+                # robot mute.
+                log.warning("TTS voice instructions not supported (%s) — "
+                            "using the plain voice from now on.", exc)
+                self._tts_supports_instructions = False
+                _create(False)
 
             # Verify the output file actually has audio data.
             if not os.path.exists(out_path):

@@ -57,7 +57,16 @@ DEFAULTS = {
         "chat_model": "gpt-4o-mini",
         "transcribe_model": "gpt-4o-mini-transcribe",
         "tts_model": "gpt-4o-mini-tts",
-        "tts_voice": "alloy",
+        "tts_voice": "fable",
+        # Accent / delivery styling. Affects HOW the robot speaks, not what it
+        # says. Silently ignored by models that do not support instructions.
+        "tts_instructions": (
+            "Speak in a warm, clear British English accent, like a friendly UK "
+            "university campus guide at UWE Bristol. Sound welcoming, natural "
+            "and unhurried, never rushed or robotic. If the text is in Arabic, "
+            "French, or Chinese, speak it naturally in that language with a "
+            "native accent instead."
+        ),
         "max_history_turns": 12,
         "use_local_faq": False,
         "request_timeout": 30,
